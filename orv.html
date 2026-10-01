@@ -4,9 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-title" content="Orv">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="theme-color" content="#454545">
 <title>Orv</title>
-<link rel="manifest" href="./orv.webmanifest">
+<link rel="manifest" href="./orv.webmanifest?v=2">
 <link rel="apple-touch-icon" href="./icon.png?v=true1">
 <link rel="stylesheet" href="./fonts.css">
 <!--
@@ -94,6 +97,7 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--in
 #gateLine::placeholder { color: var(--faint); }
 #gateSay { width: min(100%, 420px); min-height: 3.6em; margin-top: 12px; font-size: var(--small); line-height: 1.4; color: var(--dim); text-align: center; white-space: pre-wrap; }
 #gateSay.bad { color: var(--late); }
+#gateDiag { position: fixed; bottom: calc(env(safe-area-inset-bottom) + 14px); left: 0; right: 0; text-align: center; font-size: 11px; color: var(--faint); }
 body.gated #app, body.gated #orv, body.gated #keep { visibility: hidden; }
 @media (prefers-reduced-motion: reduce) { .row.sel .word, .line { transform: none; } }
 </style>
@@ -112,7 +116,7 @@ body.gated #app, body.gated #orv, body.gated #keep { visibility: hidden; }
 <button id="keep" aria-label="keep a copy of the list">keep</button>
 <input id="restore" type="file" accept="application/json,.json" hidden>
 <div id="flash"></div>
-<div id="gate" hidden><form id="gateForm" action="#" autocomplete="off"><input id="gateLine" type="text" inputmode="text" enterkeyhint="go" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="paste key" aria-label="paste your key"><button id="gateGo" type="submit">open</button></form><div id="gateSay" aria-live="polite"></div></div>
+<div id="gate" hidden><form id="gateForm" action="#" autocomplete="off"><input id="gateLine" type="text" inputmode="text" enterkeyhint="go" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="paste key" aria-label="paste your key"><button id="gateGo" type="submit">open</button></form><div id="gateSay" aria-live="polite"></div><div id="gateDiag"></div></div>
 <script>
 'use strict';
 /* ═══ KNOBS: every tunable value, for his eye ═══ */
@@ -146,7 +150,7 @@ const SPARE = { db: null, t: 0,
     if (!Object.keys(o).length) return; db.transaction('s', 'readwrite').objectStore('s').put(o, 'all'); } catch (e) {} }, 300); },
   async get() { try { const db = await this.open(); return await new Promise(ok => { const r = db.transaction('s').objectStore('s').get('all'); r.onsuccess = () => ok(r.result || null); r.onerror = () => ok(null); }); } catch (e) { return null; } }
 };
-const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); SPARE.save(); return true; } catch (e) { say('(This phone would not keep that. Tap keep to save a copy.)', true); return false; } };
+const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); SPARE.save(); return true; } catch (e) { try { say('(This phone would not keep that. Tap keep to save a copy.)', true); } catch (x) {} return false; } };
 function blank() { return { v: 1, tasks: [], one: null, n: 0 }; }
 /* #new: a new kingdom. Whatever was here is set aside (kept under orv.archive.<time>, never deleted). */
 if (location.hash === '#new') {
@@ -155,6 +159,8 @@ if (location.hash === '#new') {
   ['orv.state', 'orv.log', 'orv.chat', 'orv.summary', 'orv.breath'].forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
   history.replaceState(null, '', location.pathname + location.search);
 }
+/* every open is counted, so a phone that forgets everything shows itself (opens stuck at 1) */
+const OPENS = (load('orv.opens', 0) || 0) + 1; store('orv.opens', OPENS);
 let ST = load('orv.state', null);
 if (!ST || !Array.isArray(ST.tasks)) { ST = blank(); store('orv.state', ST); }
 /* ask the phone to keep this kingdom for good (Safari honours it for sites he uses) */
@@ -539,9 +545,13 @@ drawChat();
 const TRY = ['gemini', 'groq', 'openrouter', 'anthropic', 'openai', 'xai'];
 let CHA = null, GATE_BUSY = false;
 function gate(why) {
-  CHA = null; document.body.classList.add('gated'); const g = $('gate'); g.hidden = false; g.classList.remove('gone');
+  CHA = null; gateDiag(); document.body.classList.add('gated'); const g = $('gate'); g.hidden = false; g.classList.remove('gone');
   const L = $('gateLine'); L.value = ''; L.placeholder = 'paste key'; gateSay(why || '', !!why); setTimeout(() => L.focus(), 50);
 }
+function gateDiag() { const app = (navigator.standalone || matchMedia('(display-mode: standalone)').matches) ? 'app' : 'safari tab';
+  let pv = false; try { pv = !window.indexedDB; } catch (e) { pv = true; }
+  const kat = load('orv.keyAt', null);
+  $('gateDiag').textContent = 'opened as ' + app + ' · opens kept: ' + OPENS + ' · key last kept: ' + (kat ? fmtAt(kat) : 'never') + (pv ? ' · no IndexedDB' : ''); }
 function gateSay(t, bad) { const s = $('gateSay'); s.textContent = t; s.classList.toggle('bad', !!bad); }
 function ungate(d) {
   $('gate').classList.add('gone'); document.body.classList.remove('gated'); setTimeout(() => { $('gate').hidden = true; }, 450);
@@ -564,7 +574,8 @@ async function gateTry(raw) {
   GATE_BUSY = false; $('gateLine').disabled = false;
   if (!door) { $('gateLine').value = ''; $('gateLine').focus(); log({ who: 'k', what: 'key refused', text: firstWhy });
     return gateSay('No door took that key. ' + String(firstWhy).slice(0, 160), true); }
-  const b = box(); b.apiKey = v; b.door = door; store(BOX, b); log({ who: 'k', what: 'key', door });
+  const b = box(); b.apiKey = v; b.door = door; store(BOX, b); log({ who: 'k', what: 'key', door }); store('orv.keyAt', nowIso());
+  if (box().apiKey !== v) return gateSay('This phone refused to keep the key. In Settings → Apps → Safari, turn off "Block All Cookies", and make sure this is not a Private tab.', true);
   const kept = load('orv.model', {}); delete kept[door]; store('orv.model', kept);
   if (!paidOpen(door)) { CHA = door; $('gateLine').value = ''; $('gateLine').placeholder = K.password;
     return gateSay('The key works (' + door + '). That one costs money. Type ' + K.password + ' to open it.'); }

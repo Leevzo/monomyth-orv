@@ -3,7 +3,7 @@
  "short_name": "Orv",
  "id": "./",
  "start_url": "./",
- "display": "browser",
+ "display": "standalone",
  "background_color": "#454545",
  "theme_color": "#454545",
  "icons": [
@@ -25,5 +25,6 @@
    "type": "image/png",
    "purpose": "any"
   }
- ]
+ ],
+ "scope": "./"
 }
