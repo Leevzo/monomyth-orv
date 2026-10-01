@@ -13,7 +13,7 @@
      so it opened empty. The manifest says display "browser": the icon opens Safari, and ONE kingdom. -->
 <meta name="apple-mobile-web-app-title" content="Orv">
 <link rel="manifest" href="./ink.webmanifest">
-<link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">
+<link rel="apple-touch-icon" href="./icon.png">
 <title>Inkling</title>
 <link rel="stylesheet" href="./fonts.css">
 <!--
@@ -1566,16 +1566,21 @@ async function boot() {
   /* the hash: an invite (#ink=) or a message (#m=). Read once, then wiped from the address bar —
      an invite holds keys and should not sit in the history. */
   /* #seed= plants his kingdom (only into an empty one). No invite and no message: HIS KINGDOM (§12). */
-  let got = null, seed = null;
+  /* #say=<words> comes from the "Tell Orv" Shortcut (Siri, the Lock Screen control, the Action button):
+     the words land in his kingdom as if typed, and Orv answers. */
+  let got = null, seed = null, said = null;
   if (location.hash.length > 1) {
     const sm = /^#seed=([A-Za-z0-9_-]+)$/.exec(location.hash);
-    if (sm) seed = sm[1]; else got = await INK.readLink(location.hash);
+    const sy = /^#say=(.*)$/s.exec(location.hash);
+    if (sm) seed = sm[1];
+    else if (sy) { try { said = decodeURIComponent(sy[1].replace(/\+/g, ' ')); } catch (e) { said = null; } }
+    else got = await INK.readLink(location.hash);
     history.replaceState(null, '', location.pathname + location.search);
   }
   if (got && got.ink && !adopt(got.ink)) got = null;
   if (got && got.ink) enter(got.ink.p);
   else if (got && got.m && projects().length) { enter(projects()[0]); await takeBody(got.m); }
-  else await meEnter(seed);
+  else { await meEnter(seed); if (said && said.trim()) { $('meWords').value = said.slice(0, 4000); await meSpeak(); } }
   if (!ME.on) track.scrollLeft = track.clientWidth;
   setInterval(resendDue, KNOBS.resendCheckMs);
   setInterval(renderRoad, KNOBS.roadMs);
