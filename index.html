@@ -9,8 +9,8 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' https: http://127.0.0.1:*; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#0a0a0a">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<!-- No apple-mobile-web-app-capable: a standalone Home Screen app on iOS gets storage apart from Safari's,
+     so it opened empty. The manifest says display "browser": the icon opens Safari, and ONE kingdom. -->
 <meta name="apple-mobile-web-app-title" content="Inkling">
 <link rel="manifest" href="./ink.webmanifest">
 <link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">
@@ -43,11 +43,14 @@
 
   PERSONAL MODE (§12) is the default: no #ink= in the URL and no project open opens HIS KINGDOM.
     The Word Sword (left), the Constellation (right), Orv's corner (below). Storage under 'ink.me.':
-      state {v:1, tasks:[{id, word, text, after, done, at, doneAt?}], one, n} · log (append-only) ·
-      paid {door: at} (the doors opened by the word) · stash.<at> (a kingdom set aside by a restore).
+      state {v:1, tasks:[{id, word, text, after, done, at, doneAt?, deleted?, deletedAt?, archived?, archivedAt?}], one, n} ·
+      log (append-only) · paid {door: at} (the doors opened by the word) · stash.<at> (a kingdom set aside
+      by a restore) · kept (the day of the last "keep" file).
     His words are logged verbatim BEFORE any model call. State changes ONLY through applyOp() on an op
     that checkOp() passed, from his hand (who:'k') or from Orv (who:'ai:<door>:<model>'). Nothing is
-    ever deleted: "strike" marks done. With no usable key, Orv asks for one and the key is written into
+    ever deleted: a delete or an archive (his hand only, by swipe) is a mark with its time, hidden from
+    the sword, the sky and Orv, kept in state and the log. TAP a word = its information; SWIPE it = act
+    (right: done / undone · left: delete an open one / archive a done one). With no usable key, Orv asks for one and the key is written into
     the Sword's box ('monomyth.focus.byok.v1', the same {apiKey, models, lists} shape _glass.js keeps).
     #seed=<b64url(deflate(json))> plants a prepared kingdom only into an empty one, never over one.
 -->
@@ -153,7 +156,16 @@ summary::-webkit-details-marker { display: none; }
 #meMid { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; display: grid;
          grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 0 8px; align-items: start; }
 #sword { min-width: 0; text-align: center; padding: 4px 0 12px; }
+#sword { overflow-x: clip; }
 #sword button { display: block; width: 100%; text-align: center; padding: 0 2px; overflow-wrap: anywhere; }
+#sword button[data-id] { touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+/* the swipe: the word follows the thumb; the space it uncovers shows what letting go will do */
+#swipe { position: fixed; z-index: 9; pointer-events: none; color: var(--dim); display: flex; flex-direction: column; gap: 4px; }
+#swipe.past { color: var(--ink); }
+#swipe svg { display: block; width: 21px; height: 21px; shape-rendering: crispEdges; }
+#swipe .cue { margin: 0; color: inherit; }
+#meEmpty { flex: 0 0 auto; color: var(--dim); font-size: 13px; line-height: 1.35; margin: 2px 0 6px; }
+#meEmpty button { min-height: 0; min-width: 0; padding: 0; color: var(--ink); }
 #blade button { min-height: 30px; font-size: var(--blade); text-decoration: line-through; text-decoration-thickness: 1px; }
 #guard { font-family: 'Dogica', ui-monospace, monospace; color: var(--gold); line-height: 1.3; padding: 8px 2px 2px; overflow: hidden; }
 #guardLine { font-size: 12px; line-height: 1.3; color: var(--dim); margin: 0 0 6px; overflow-wrap: anywhere; }
@@ -174,7 +186,11 @@ summary::-webkit-details-marker { display: none; }
 #menu.form { width: min(320px, calc(100vw - 2 * var(--pad))); align-items: stretch; }
 #menu .cue { margin: 0 0 2px; }
 #menu .line { color: var(--dim); font-size: 13px; max-width: 230px; overflow-wrap: anywhere; margin: 0 0 4px; }
+#menu.info { width: calc(100vw - 2 * var(--pad)); }          /* the information: a full line of plain words under the word */
+#menu .full { font-size: 15px; max-width: 300px; overflow-wrap: anywhere; margin: 0 0 6px; }
+#menu .row { gap: 0 4px; }
 #menu button { min-height: 40px; }
+#menu .row .quiet { color: var(--dim); padding: 0 6px 0 0; min-width: 0; }
 </style>
 </head>
 <body>
@@ -259,6 +275,7 @@ summary::-webkit-details-marker { display: none; }
     </span>
   </header>
   <div id="meShelfList" hidden></div>
+  <p id="meEmpty" hidden>Your kingdom lives in Safari on this phone. If this is empty, open the page in Safari, or tap <button type="button" id="meEmptyRestore" class="word">restore</button>.</p>
   <div id="meMid">
     <div id="sword" aria-label="the word sword">
       <ol id="blade" aria-label="the blade: done"></ol>
@@ -285,6 +302,7 @@ summary::-webkit-details-marker { display: none; }
     <div id="meOrvSeat"></div>
   </div>
   <div id="menu" role="dialog" aria-label="this word" hidden></div>
+  <div id="swipe" aria-hidden="true" hidden></div>
 </main>
 
 <script src="./palette333.js"></script>
@@ -320,6 +338,14 @@ const KNOBS = {
     sky: { cols: 3, dx: 58, dy: 66, pad: 22, arc: [0, 8, 0], r: 6, ring: 11, mark: 9, hit: 22, labelDy: 20, labelMax: 9, font: 13 },
     guardPx: [32, 24, 16],              // the crossguard: the largest of these that fits (Dogica is pixels: multiples of 8)
     bladePx: 14, handlePx: 16,          // blade and handle words; both below the crossguard's smallest
+    swipeLock: 10,                      // px of movement before a drag is a swipe (mostly sideways) or a scroll (mostly up/down)
+    swipeAt: 72,                        // px past which letting go acts; short of it the word goes home in one step
+    glyphs: {                           // 7×7 pixel glyphs (the pixel faces carry no ✓ ✕ ↺): '#' = ink
+      done:    ['......#', '.....##', '#...##.', '##.##..', '.###...', '..#....', '.......'],
+      delete:  ['#.....#', '.#...#.', '..#.#..', '...#...', '..#.#..', '.#...#.', '#.....#'],
+      undone:  ['.#.....', '#####..', '.#...#.', '......#', '......#', '.....#.', '.####..'],
+      archive: ['#######', '#.....#', '#######', '.#...#.', '.#.#.#.', '.#...#.', '.#####.']
+    },
     wordMax: 16, lineMax: 140, sayMax: 600, opsMax: 12, afterMax: 8, tasksMax: 2000,
     rawMax: 2000,                       // characters of an unparsed reply kept in the log
     idsMax: 1200,                       // characters of the id list in Orv's system words
@@ -892,7 +918,7 @@ function pasteBox() {
 /* ═══ PERSONAL MODE (§12): his own kingdom ═══════════════════════════════════════════════════════
    The ONLY ways his state changes: applyOp() on an op that checkOp() passed — from his hand (logged
    who:'k') or from Orv's JSON (logged who:'ai:<door>:<model>'). The log only ever grows. */
-const ME = { on: false, st: null, menu: null, say: null, busy: false, note: '', sky: null };
+const ME = { on: false, st: null, menu: null, say: null, busy: false, note: '', sky: null, swiped: 0 };
 const meKey = k => 'ink.me.' + k;
 function meGet(k, d) { try { const v = localStorage.getItem(meKey(k)); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }
 function mePut(k, v) {
@@ -900,6 +926,7 @@ function mePut(k, v) {
   catch (e) { ME.note = 'this phone would not keep that (' + (e.message || e) + ')'; return false; }
 }
 const isoMs = () => new Date().toISOString();
+const today = () => { const d = new Date(), p = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); };
 function logIt(e) {                                              // append-only: read fresh, add one, write back
   const old = meGet('log', []), list = Array.isArray(old) ? old : [], last = list[list.length - 1];
   list.push(Object.assign({ n: (last && Number.isSafeInteger(last.n) ? last.n : list.length) + 1, at: isoMs() }, e));
@@ -936,6 +963,8 @@ function cleanState(s) {
     const o = { id: t.id, word: t.word.trim(), text: t.text.trim(), after: Array.isArray(t.after) ? t.after : [], done: t.done === true,
                 at: typeof t.at === 'string' ? t.at : isoMs() };
     if (o.done && typeof t.doneAt === 'string') o.doneAt = t.doneAt;
+    if (t.deleted === true) { o.deleted = true; o.deletedAt = typeof t.deletedAt === 'string' ? t.deletedAt : o.at; }      // a tombstone stays a tombstone
+    if (t.archived === true) { o.archived = true; o.archivedAt = typeof t.archivedAt === 'string' ? t.archivedAt : o.doneAt || o.at; }
     tasks.push(o);
   }
   tasks.forEach(t => { t.after = Array.from(new Set(t.after.filter(a => typeof a === 'string' && seen.has(a) && a !== t.id))); });
@@ -945,8 +974,10 @@ function cleanState(s) {
 }
 
 /* story order: the after-chains from their roots (children by id), then any loop, then the rest by id */
+/* the living tasks: a deleted or archived one is kept in state but is gone from the sword, the sky and Orv */
+const live = st => st.tasks.filter(t => !t.deleted && !t.archived);
 function storyOrder(st) {
-  const all = st.tasks.slice().sort((a, b) => nOf(a.id) - nOf(b.id)), ids = new Set(all.map(t => t.id));
+  const all = live(st).sort((a, b) => nOf(a.id) - nOf(b.id)), ids = new Set(all.map(t => t.id));
   const kids = new Map(all.map(t => [t.id, []]));
   all.forEach(t => t.after.forEach(a => { if (ids.has(a)) kids.get(a).push(t); }));
   const out = [], seen = new Set();
@@ -958,11 +989,11 @@ function storyOrder(st) {
 }
 /* THE ONE THING: his (or Orv's) pick while it is open; else the first open task in story order */
 function theOne(st) {
-  const t = st.one && st.tasks.find(x => x.id === st.one);
+  const t = st.one && live(st).find(x => x.id === st.one);
   return t && !t.done ? t : storyOrder(st).find(x => !x.done) || null;
 }
 function reaches(st, from, to) {                                 // does `from` already come after `to`?
-  const at = new Map(st.tasks.map(t => [t.id, t])), seen = new Set(), stack = [from];
+  const at = new Map(live(st).map(t => [t.id, t])), seen = new Set(), stack = [from];
   while (stack.length) {
     const id = stack.pop(); if (id === to) return true; if (seen.has(id)) continue; seen.add(id);
     const t = at.get(id); if (t) stack.push(...t.after);
@@ -973,7 +1004,7 @@ function reaches(st, from, to) {                                 // does `from` 
 /* ── Orv's Action: the six ops, checked one by one ('' = good, else the reason it is dropped) ── */
 function checkOp(st, op) {
   if (!op || typeof op !== 'object' || Array.isArray(op)) return 'not an op';
-  const task = id => (typeof id === 'string' && st.tasks.find(t => t.id === id)) || null;
+  const task = id => (typeof id === 'string' && live(st).find(t => t.id === id)) || null;
   const unknown = id => 'unknown id ' + clip(String(id), 20);
   switch (op.op) {
     case 'add': {
@@ -992,6 +1023,8 @@ function checkOp(st, op) {
       if (op.a === op.b) return 'a task cannot follow itself';
       return reaches(st, op.a, op.b) ? 'that link would make a loop' : '';
     case 'one': { const t = task(op.id); return !t ? unknown(op.id) : t.done ? 'that task is done' : ''; }
+    case 'delete': { const t = task(op.id); return !t ? unknown(op.id) : t.done ? 'a done task is archived, not deleted' : ''; }
+    case 'archive': { const t = task(op.id); return !t ? unknown(op.id) : !t.done ? 'only a done task is archived' : ''; }
     case 'edit': {
       if (!task(op.id)) return unknown(op.id);
       if (op.word === undefined && op.text === undefined) return 'nothing to edit';
@@ -1007,8 +1040,10 @@ function normOp(op) {                                            // only the kno
   else { o.id = op.id; if (op.op === 'edit') { if (op.word !== undefined) o.word = op.word.trim(); if (op.text !== undefined) o.text = op.text.trim(); } }
   return o;
 }
-function applyOp(st, o, at) {                                    // o has passed checkOp; never deletes anything
+function applyOp(st, o, at) {                                    // o has passed checkOp; never deletes anything (a delete is a mark)
   const t = o.id ? st.tasks.find(x => x.id === o.id) : null;
+  if (o.op === 'delete') { t.deleted = true; t.deletedAt = at; if (st.one === t.id) st.one = null; return; }
+  if (o.op === 'archive') { t.archived = true; t.archivedAt = at; return; }
   if (o.op === 'add') { st.n += 1; st.tasks.push({ id: 't' + st.n.toString(36), word: o.word, text: o.text, after: (o.after || []).slice(), done: false, at }); }
   else if (o.op === 'done') { t.done = true; t.doneAt = at; }
   else if (o.op === 'undone') { t.done = false; delete t.doneAt; }
@@ -1021,6 +1056,7 @@ function runOps(st, ops) {                                       // valid ones a
   if (!Array.isArray(ops)) return { applied, dropped: [{ i: 0, reason: 'ops is not a list', op: ops }] };
   ops.forEach((op, i) => {
     if (i >= KNOBS.me.opsMax) return dropped.push({ i, reason: 'more than ' + KNOBS.me.opsMax + ' ops in one reply', op });
+    if (op && (op.op === 'delete' || op.op === 'archive')) return dropped.push({ i, reason: 'only his hand deletes or archives', op });
     const why = checkOp(st, op);
     if (why) return dropped.push({ i, reason: why, op });
     const o = normOp(op); applyOp(st, o, at); applied.push(o);
@@ -1170,36 +1206,38 @@ function meTake(d, model, reply) {
 /* his hand: the same checks, logged who:'k' */
 function handOp(op, what) {
   const why = checkOp(ME.st, op);
-  if (why) { if (ME.menu) { ME.menu.why = why; drawMenu(); } return false; }
+  if (why) { if (ME.menu) { ME.menu.why = why; drawMenu(); } else meNote(why); return false; }
   const st = JSON.parse(JSON.stringify(ME.st)), o = normOp(op);
   applyOp(st, o, isoMs());
-  if (!mePut('state', st)) { if (ME.menu) { ME.menu.why = ME.note; drawMenu(); } return false; }
+  if (!mePut('state', st)) { if (ME.menu) { ME.menu.why = ME.note; drawMenu(); } else meNote(ME.note); return false; }
   ME.st = st;
   logIt({ who: 'k', what, ops: [o] });
   closeMenu(); meRender();
   return true;
 }
+/* a TAP shows the word's information; tapping it again (or anywhere else) lets it go */
 function meTap(id, el) {
   if (ME.menu && ME.menu.mode === 'link' && ME.menu.id) {        // "link": the star tapped now is the one it comes after
     if (id !== ME.menu.id) handOp({ op: 'link', a: id, b: ME.menu.id }, 'link');
     return;
   }
-  openMenu(id, el, 'main');
+  if (ME.menu && ME.menu.mode === 'info' && ME.menu.id === id) return closeMenu();
+  openMenu(id, el, 'info');
 }
 function openMenu(id, el, mode) { ME.menu = { id, mode, at: el.getBoundingClientRect(), why: '' }; drawMenu(); }
 function closeMenu() { ME.menu = null; const m = $('menu'); if (m) { m.hidden = true; m.textContent = ''; } }
 function drawMenu() {
   const m = ME.menu, box = $('menu');
   if (!m) return closeMenu();
-  const t = m.id ? ME.st.tasks.find(x => x.id === m.id) : null;
+  const t = m.id ? live(ME.st).find(x => x.id === m.id) : null;
   if (m.id && !t) return closeMenu();
   box.textContent = '';
   const form = m.mode === 'add' || m.mode === 'rename';
   box.classList.toggle('form', form);
-  const word = (label, fn) => { const b = mk('button', 'word', label); b.type = 'button'; b.addEventListener('click', fn); box.appendChild(b); return b; };
+  box.classList.toggle('info', !form);
   const mode = md => () => { m.mode = md; m.why = ''; drawMenu(); };
   if (form) {
-    box.appendChild(mk('p', 'cue', m.mode === 'add' ? 'a new task' : 'rename'));
+    box.appendChild(mk('p', 'cue', m.mode === 'add' ? 'a new task' : 'edit'));
     const w = mk('input'), l = mk('textarea');
     w.type = 'text'; w.maxLength = KNOBS.me.wordMax; w.placeholder = 'one word'; w.value = t ? t.word : ''; w.setAttribute('aria-label', 'the word');
     w.autocomplete = 'off'; l.rows = 2; l.maxLength = KNOBS.me.lineMax; l.placeholder = 'the line'; l.value = t ? t.text : ''; l.setAttribute('aria-label', 'the line');
@@ -1209,21 +1247,26 @@ function drawMenu() {
     ok.type = no.type = 'button';
     ok.addEventListener('click', () => handOp(m.mode === 'add' ? { op: 'add', word: w.value, text: l.value } : { op: 'edit', id: t.id, word: w.value, text: l.value },
                                               m.mode === 'add' ? 'add' : 'rename'));
-    no.addEventListener('click', closeMenu);
+    no.addEventListener('click', m.mode === 'add' ? closeMenu : mode('info'));
     row.append(ok, no);
     setTimeout(() => w.focus(), 0);
   } else if (m.mode === 'link') {
     box.appendChild(mk('p', 'line', 'tap the star ' + t.word + ' comes after'));
-    word('never mind', mode('main'));
-  } else {
-    box.appendChild(mk('p', 'cue', t.word));
-    box.appendChild(mk('p', 'line', t.text));
-    word('rename', mode('rename'));
-    if (t.done) word('undone', () => handOp({ op: 'undone', id: t.id }, 'undone'));
-    else word('done', () => handOp({ op: 'done', id: t.id }, 'done'));
-    if (!t.done && theOne(ME.st) !== t) word('the one thing', () => handOp({ op: 'one', id: t.id }, 'one'));
-    word('link', mode('link'));
-    if (!t.done) word('strike', () => handOp({ op: 'done', id: t.id }, 'strike'));   // marks done; never deletes
+    const b = mk('button', 'word', 'never mind'); b.type = 'button'; b.addEventListener('click', mode('info')); box.appendChild(b);
+  } else {                                                        // the information, in plain words
+    const all = live(ME.st), named = list => list.map(x => x.word).join(' · ');
+    const before = named(t.after.map(a => all.find(x => x.id === a)).filter(Boolean));
+    const then = named(all.filter(x => x.after.includes(t.id)));
+    box.appendChild(mk('p', 'cue', t.word + (t.done ? ' · done' : theOne(ME.st) === t ? ' · the one thing' : '')));
+    box.appendChild(mk('p', 'full', t.text));
+    if (before) box.appendChild(mk('p', 'line', 'after ' + before));
+    if (then) box.appendChild(mk('p', 'line', 'then ' + then));
+    box.appendChild(mk('p', 'line', 'made ' + when(t.at) + (t.done && t.doneAt ? ' · done ' + when(t.doneAt) : '')));
+    const row = mk('div', 'row'); box.appendChild(row);
+    const quiet = (label, fn) => { const b = mk('button', 'quiet word', label); b.type = 'button'; b.addEventListener('click', fn); row.appendChild(b); };
+    quiet('edit', mode('rename'));
+    if (!t.done && theOne(ME.st) !== t) quiet('the one thing', () => handOp({ op: 'one', id: t.id }, 'one'));
+    quiet('link', mode('link'));
   }
   if (m.why) box.appendChild(mk('p', 'dim', m.why));
   box.hidden = false;
@@ -1232,6 +1275,76 @@ function drawMenu() {
   if (!form && y + bh > H - pad) y = r.top - bh - 6;
   box.style.left = Math.max(pad, Math.min(x, W - bw - pad)) + 'px';
   box.style.top = Math.max(pad, Math.min(y, H - bh - pad)) + 'px';
+}
+
+/* ── the swipe (his hand on the sword): the word follows the thumb 1:1, sideways only. Right: done
+   (a done one: undone). Left: delete an open one, archive a done one. Short of the mark it goes home
+   in one step. The first few px decide: mostly up/down is a scroll, and the swipe lets go. ── */
+let SW = null;
+function swipeFor(t, dir) {
+  if (!t) return null;
+  if (!t.done) return dir > 0 ? { op: 'done', what: 'done' } : { op: 'delete', what: 'delete' };
+  return dir > 0 ? { op: 'undone', what: 'undone' } : { op: 'archive', what: 'archive' };
+}
+function glyphSvg(rows) {
+  const svg = document.createElementNS(SVGNS, 'svg');
+  svg.setAttribute('viewBox', '0 0 7 7'); svg.setAttribute('fill', 'currentColor');
+  rows.forEach((r, y) => Array.from(r).forEach((c, x) => {
+    if (c !== '#') return;
+    const p = document.createElementNS(SVGNS, 'rect');
+    [['x', x], ['y', y], ['width', 1], ['height', 1]].forEach(([k, v]) => p.setAttribute(k, String(v)));
+    svg.appendChild(p);
+  }));
+  return svg;
+}
+function swDraw() {
+  const s = SW, g = $('swipe'), dir = s.dx > 0 ? 1 : -1, a = swipeFor(live(ME.st).find(x => x.id === s.id), dir);
+  s.el.style.transform = 'translateX(' + s.dx + 'px)';
+  if (!a || Math.abs(s.dx) < 12) { g.hidden = true; return; }
+  if (g.dataset.op !== a.op) {
+    g.textContent = ''; g.dataset.op = a.op;
+    g.append(glyphSvg(KNOBS.me.glyphs[a.op]), mk('p', 'cue', a.what));
+  }
+  g.classList.toggle('past', Math.abs(s.dx) >= KNOBS.me.swipeAt);
+  g.style.alignItems = dir > 0 ? 'flex-start' : 'flex-end';
+  g.hidden = false;
+  const r = s.r, gh = g.offsetHeight;
+  g.style.top = (r.top + r.height / 2 - gh / 2) + 'px';
+  if (dir > 0) { g.style.left = (r.left + 4) + 'px'; g.style.right = ''; }
+  else { g.style.right = (innerWidth - r.right + 4) + 'px'; g.style.left = ''; }
+}
+function swHome() {
+  if (SW && SW.el) SW.el.style.transform = '';
+  const g = $('swipe'); g.hidden = true; g.classList.remove('past');
+  SW = null;
+}
+function swDown(e) {
+  if (!ME.on || SW || (e.pointerType === 'mouse' && e.button !== 0)) return;
+  const el = e.target.closest && e.target.closest('#sword [data-id]');
+  if (!el || !el.dataset.id) return;
+  SW = { el, id: el.dataset.id, pid: e.pointerId, x: e.clientX, y: e.clientY, dx: 0, mode: '', r: null };
+}
+function swMove(e) {
+  if (!SW || e.pointerId !== SW.pid) return;
+  const dx = e.clientX - SW.x, dy = e.clientY - SW.y;
+  if (!SW.mode) {
+    if (Math.hypot(dx, dy) < KNOBS.me.swipeLock) return;
+    if (Math.abs(dy) >= Math.abs(dx)) return swHome();          // a scroll: the swipe lets go
+    SW.mode = 'swipe'; SW.r = SW.el.getBoundingClientRect();
+    try { SW.el.setPointerCapture(e.pointerId); } catch (err) { /* the move events still come */ }
+    if (ME.menu) closeMenu();
+  }
+  if (e.cancelable) e.preventDefault();
+  SW.dx = dx; swDraw();
+}
+function swUp(e) {
+  if (!SW || e.pointerId !== SW.pid) return;
+  const s = SW; swHome();
+  if (s.mode !== 'swipe' || e.type === 'pointercancel') return;
+  ME.swiped = Date.now();                                        // the click that follows a swipe is not a tap
+  if (Math.abs(s.dx) < KNOBS.me.swipeAt) return;
+  const a = swipeFor(live(ME.st).find(x => x.id === s.id), s.dx > 0 ? 1 : -1);
+  if (a) handOp({ op: a.op, id: s.id }, a.what);
 }
 
 /* ── drawing ── */
@@ -1256,7 +1369,8 @@ function drawMeSky(order, one) {
   const svg = $('meSky'), K = INK.KNOBS.sky, keep = Object.assign({}, K), look = KNOBS.me.look;
   Object.assign(K, KNOBS.me.sky);                                // the same renderer (§2), sized for half a phone
   try {
-    const tasks = order.map(t => ({ id: t.id, word: t.word, text: t.text, after: t.after, done: t.done, who: 'k' }));
+    const ids = new Set(order.map(t => t.id));
+    const tasks = order.map(t => ({ id: t.id, word: t.word, text: t.text, after: t.after.filter(a => ids.has(a)), done: t.done, who: 'k' }));
     if (!ME.sky) ME.sky = INK.drawSky(svg, tasks, [], {}); else ME.sky.draw(tasks, []);
     const gold = String(INK.KING_HEX).toLowerCase();
     svg.querySelectorAll('circle').forEach(c => {
@@ -1273,16 +1387,18 @@ function drawMeSky(order, one) {
   } finally { Object.assign(K, keep); }
 }
 function meRender() {
-  const st = ME.st, one = theOne(st), order = storyOrder(st), done = st.tasks.filter(t => t.done);
+  const st = ME.st, one = theOne(st), order = storyOrder(st), done = order.filter(t => t.done);
   $('meName').textContent = KNOBS.me.title;
-  $('meCount').textContent = st.tasks.length ? done.length + ' of ' + st.tasks.length + ' done' : '';
+  $('meCount').textContent = order.length ? done.length + ' of ' + order.length + ' done' : '';
+  $('meEmpty').hidden = !isEmpty(st);                            // opened empty: say where the kingdom lives
+  $('meKeep').textContent = !isEmpty(st) && meGet('kept', '') !== today() ? 'keep today?' : 'keep';
   const at = t => t.doneAt || '';
   meWords($('blade'), done.slice().sort((a, b) => (at(a) < at(b) ? -1 : at(a) > at(b) ? 1 : nOf(a.id) - nOf(b.id))), 'struck');
   meWords($('handle'), order.filter(t => !t.done && t !== one), '');
   const g = $('guard');
   g.hidden = !one; g.textContent = one ? one.word : ''; g.dataset.id = one ? one.id : '';
   g.setAttribute('aria-label', one ? 'the one thing: ' + one.word + ' — ' + one.text : 'the one thing');
-  $('guardLine').textContent = one ? one.text : st.tasks.length ? 'every task is done' : 'tell Orv what the day holds, or tap +';
+  $('guardLine').textContent = one ? one.text : order.length ? 'every task is done' : 'tell Orv what the day holds, or tap +';
   fitGuard();
   drawMeSky(order, one);
   const say = $('meSay'); say.textContent = ME.say ? ME.say.text : ''; say.classList.toggle('stage', !!(ME.say && ME.say.stage));
@@ -1319,10 +1435,11 @@ async function meKeep() {
   const name = 'kingdom-' + isoMs().slice(0, 10) + '.json';
   const file = new File([JSON.stringify({ v: 1, kind: 'ink.me', at: isoMs(), keys })], name, { type: 'application/json' });
   try {
-    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); return meNote('kept'); }
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); mePut('kept', today()); meRender(); return meNote('kept'); }
   } catch (e) { if (e && e.name === 'AbortError') return; }
   const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name;
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  mePut('kept', today()); meRender();
   meNote('kept as ' + name);
 }
 /* restore: the kingdom on this glass is first set aside under ink.me.stash.<at> — never deleted */
@@ -1402,7 +1519,15 @@ async function boot() {
   $('meWords').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); meSpeak(); } });
   $('guard').addEventListener('click', () => { if ($('guard').dataset.id) meTap($('guard').dataset.id, $('guard')); });
   $('plus').addEventListener('click', () => openMenu(null, $('plus'), 'add'));
-  const sky = $('meSky'), skyTap = e => {                        // INK's own tap would select; here a tap opens the word menu
+  const sword = $('sword');                                      // the swipe: pointer events, sideways only (touch-action: pan-y)
+  sword.addEventListener('pointerdown', swDown);
+  addEventListener('pointermove', swMove, { passive: false });
+  addEventListener('pointerup', swUp); addEventListener('pointercancel', swUp);
+  sword.addEventListener('click', e => {                          // a swipe's own click is not a tap
+    if (ME.swiped && Date.now() - ME.swiped < 500) { e.stopPropagation(); e.preventDefault(); ME.swiped = 0; }
+  }, true);
+  $('meEmptyRestore').addEventListener('click', () => $('meFile').click());
+  const sky = $('meSky'), skyTap = e => {                        // INK's own tap would select; here a tap shows the word's information
     const g = e.target.closest && e.target.closest('[data-id]');
     e.stopPropagation();
     if (g) { if (e.type === 'keydown') e.preventDefault(); meTap(g.getAttribute('data-id'), g); }
@@ -1432,7 +1557,7 @@ async function boot() {
   $('meKeep').addEventListener('click', meKeep);
   $('meRestore').addEventListener('click', () => $('meFile').click());
   $('meFile').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) meRestore(f); });
-  addEventListener('resize', () => { if (ME.on) { closeMenu(); fitGuard(); } });
+  addEventListener('resize', () => { if (ME.on) { closeMenu(); swHome(); fitGuard(); } });
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (ME.on) fitGuard(); });
   $('sendBtn').addEventListener('click', sendWords);
   $('pasteBtn').addEventListener('click', async () => { await readPasted($('pasteIn').value, $('pasteNote')); $('pasteIn').value = ''; });
