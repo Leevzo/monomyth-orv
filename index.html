@@ -251,7 +251,9 @@ async function model(d, key) {
 }
 async function call(d, key, m, system, turns) {
   if (d === 'anthropic') {
-    const r = await fetchT(DOORS.anthropic.chat, { method: 'POST', headers: headers(d, key), body: JSON.stringify({ model: m, max_tokens: 1200, system, messages: turns }) });
+    const body = { model: m, max_tokens: 4096, system, messages: turns, output_config: { effort: 'low' } };
+    let r = await fetchT(DOORS.anthropic.chat, { method: 'POST', headers: headers(d, key), body: JSON.stringify(body) });
+    if (r.status === 400) { delete body.output_config; r = await fetchT(DOORS.anthropic.chat, { method: 'POST', headers: headers(d, key), body: JSON.stringify(body) }); }
     const o = await r.json(); if (!r.ok) throw new Error((o.error && o.error.message) || 'status ' + r.status);
     return (o.content || []).filter(c => c.type === 'text').map(c => c.text).join('');
   }
@@ -274,7 +276,7 @@ function system() {
   const now = new Date(), tz = -now.getTimezoneOffset(), off = (tz >= 0 ? '+' : '-') + String(Math.floor(Math.abs(tz) / 60)).padStart(2, '0') + ':' + String(Math.abs(tz) % 60).padStart(2, '0');
   const list = open().map((t, i) => (i + 1) + '. [' + t.id + '] ' + t.word + ' — ' + (t.text || '') + (t.at ? ' (at ' + t.at + ')' : '')).join('\n') || '(the list is empty)';
   const one = theOne();
-  return K.seed + '\n\nYou keep the King\'s list on his phone. The order of the list IS its priority. Now is ' + now.toISOString() + ' (his local offset ' + off + ').' +
+  return K.seed + '\n\nYou keep the King\'s list of pure tasks on his phone, and each day you sort it with him: merge duplicates, turn vague wishes into plain doable tasks, drop nothing he did not ask to drop, and order by what matters most (deadlines first, then what unblocks other things, then what he named as important). The order of the list IS its priority. Now is ' + now.toISOString() + ' (his local offset ' + off + ').' +
     '\nTHE ONE THING: ' + (one ? one.word + ' [' + one.id + ']' : 'none') + '\nOPEN TASKS, in priority order:\n' + list +
     '\nDone today: ' + live().filter(t => t.done).length + '.' +
     '\n\nAnswer ONLY with one JSON object: {"say": "...", "ops": [...]}' +
@@ -333,6 +335,14 @@ async function speak(raw) {
   store('orv.summary', '');
   if (words.toLowerCase() === K.password.toLowerCase()) { const d = doorOf(box().apiKey); if (d) { const p = load('orv.paid', {}); p[d] = nowIso(); store('orv.paid', p); } return say('Cha-ching heard. The ' + (d || '') + ' door is open.', true); }
   if (/^many thanks\b/i.test(words)) { await thanks(); return; }
+  const use = /^use\s+([\w.-]{2,40})$/i.exec(words);
+  if (use) { const k2 = String(box().apiKey || '').trim(), d2 = doorOf(k2); if (!d2) return say('(No key yet.)', true);
+    try { const o = await (await fetchT(DOORS[d2].list, { headers: headers(d2, k2) })).json();
+      const ids = d2 === 'gemini' ? (o.models || []).map(x => String(x.name).replace(/^models\//, '')) : (o.data || []).map(x => String(x.id));
+      const hit = ids.find(id => id.toLowerCase().includes(use[1].toLowerCase()));
+      if (!hit) return say('(The ' + d2 + ' door has no model like "' + use[1] + '".)', true);
+      const kept = load('orv.model', {}); kept[d2] = hit; store('orv.model', kept); const b = box(); if (b.models && b.models[d2]) { delete b.models[d2]; store(BOX, b); }
+      return say('Now thinking with ' + hit + '.', true); } catch (e) { return say('(The door would not list its models.)', true); } }
   const key = String(box().apiKey || '').trim(), d = doorOf(key);
   if (!key || !d) return say('(Orv taps the empty key slot.) Paste a key on the line and tap me.', true);
   if (!paidOpen(d)) return say('(The ' + d + ' door costs coin. Type ' + K.password + ' first.)', true);

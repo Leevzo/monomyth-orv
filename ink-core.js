@@ -43,7 +43,7 @@
     partsMax: 256,                       // a message of more parts than this is refused (≈ 900 KB)
     partialsMax: 32,                     // unfinished messages kept waiting for their missing parts
     inflateMax: 8 * 1024 * 1024,         // a pasted link may not inflate past this (a zip bomb stops here)
-    linkBase: 'https://leevzo.github.io/monomyth-focus/ink.html',
+    linkBase: 'https://leevzo.github.io/monomyth-orv/ink.html',
     textMax: 1500, tasksMax: 3,          // §5 message limits
     hotMax: 2048, stateLines: 23, lineMax: 140, wordsMax: 800,   // §7 Orv's hot context
     sky: {                               // §2 the constellation, in SVG user units (≈ px at phone width)

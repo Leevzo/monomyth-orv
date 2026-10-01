@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<!-- The wall. Scripts: this file, ink-core.js and palette333.js only. Never innerHTML with data: every
+<!-- The wall. Scripts: this file, ink-core.js, palette333.js, and the optional orv-*.js modules (same origin). Never innerHTML with data: every
      word from a message, a snap or a door goes in through textContent. connect-src: the doors and the
      mailbox are https; http://127.0.0.1 is only for the fake mailbox in tests (§9). -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' https: http://127.0.0.1:*; object-src 'none'; base-uri 'none'; form-action 'none'">
@@ -14,6 +14,7 @@
 <meta name="apple-mobile-web-app-title" content="Orv">
 <link rel="manifest" href="./ink.webmanifest">
 <link rel="apple-touch-icon" href="./icon.png">
+<link rel="icon" type="image/png" href="./icon-192.png"><!-- the tab's own icon, so the browser never asks the host for a missing favicon.ico -->
 <title>Inkling</title>
 <link rel="stylesheet" href="./fonts.css">
 <!--
@@ -62,6 +63,33 @@
     after-links around the word. With no usable key, Orv asks for one and the key is written into
     the Sword's box ('monomyth.focus.byok.v1', the same {apiKey, models, lists} shape _glass.js keeps).
     #seed=<b64url(deflate(json))> plants a prepared kingdom only into an empty one, never over one.
+
+  v4 (2026-10-01, CONTRACT §11): GROUPS · THE TALK · THE LOOK · THE DECIDE SLOT (JEV) · ORVAPP.
+    GROUPS     state.groups [{id:'g'+base36, word, text}] (and gn, the group counter); a task's group is a
+               group id or null. Orv's op {op:"group", word, text} makes one; add/edit take group. A wrong
+               group id is dropped (logged) and the task goes on ungrouped. The groups show as words above
+               the stars; a tap lights their stars, threads them, and puts their words in Orv's corner.
+    THE TALK   ink.me.talk: his lines and Orv's, kept until he says "many thanks" (Orv rereads it each turn).
+               "many thanks" lands the held ops, fires the ritual ('many-thanks'), and folds the talk away.
+    SETTINGS   ink.me.settings {mode: advice|answer|action, meter: immersive|balanced|focus, typed, …modules'}.
+               action applies Orv's ops at once; advice and answer hold them (ink.me.held) until "many thanks".
+    THE LOOK   ink.me.look {words, ground, orv, sky, back}: indices into KNOBS.me.knobs (greys only, Orv at an
+               integer scale); "darker", "orv bigger", "sword wider", "put it back" move it here at $0 unless a
+               decide module (ORVAPP.decide) stands in. Every move is a log line {what:'look'}.
+    JEV        a 'vck_' key or 'https://relay#pass' goes to its own box, 'monomyth.focus.decide.v1' — never
+               Orv's box, never ink.me.*, never a log line. Cha-ching opens it like any paid door.
+    ANTHROPIC  the browser header (anthropic-dangerous-direct-browser-access), thinking-sized max_tokens, a low
+               effort (asked again plainly on a 400), text blocks only, a refusal said plainly.
+    ORVAPP     window.ORVAPP is the one door for modules (orv-hex.js, orv-ritual.js, orv-settings.js,
+               orv-onboard.js, orv-card.js, orv-decide.js — each optional, loaded if present):
+                 state() · save(st, {who, what, text}) · apply(ops, {who}) · log(entry) · render()
+                 say(text, {stage, typed, thread, log}) · speak(text) · ask(system, user, {json, tokens, from})
+                 settings() · setSetting(k, v) · on(event, fn) → off · emit(event, payload)
+                 slots {sky, corner, chat, top, overlay} · claim(slot) · release(slot)
+                 tapGroup(id) · tapStar(id) · group() · look() · setLook(changes) · undoLook()
+                 setKey(k) · decideBox() · door() · models() · useModel(name) · palette · modules · decide
+               events: boot · speak (ev.stop() takes the words whole) · reply · render · tap-star · tap-group
+                       many-thanks · look · setting · key · hold-orv (when heard, a still press on Orv is a hold)
 -->
 <style>
 /* Every value here comes from KNOBS in the script below (set as CSS variables at boot);
@@ -135,7 +163,7 @@ ol { list-style: none; padding: 0; }
 #chips button { padding: 0 6px; }
 #convo { max-height: 26vh; overflow-y: auto; }
 #convo li { margin: 4px 0; overflow-wrap: anywhere; }
-#convo li.stage { color: var(--dim); font-style: italic; }
+#convo li.stage { color: var(--dim); }                         /* a stage line is dim, never italic: a sheared pixel face is a guess */
 .row { display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; min-width: 0; }
 #inks { display: grid; grid-template-columns: repeat(4, 44px); gap: 4px; margin: 6px 0; }
 #inks button { padding: 0; display: flex; align-items: center; justify-content: center; }
@@ -222,8 +250,30 @@ summary::-webkit-details-marker { display: none; }
 #meSky { display: block; width: 100%; height: auto; color: var(--ink); font-family: 'W95FA', monospace; }
 #meSky .over text { font-weight: 700; }
 #meCorner { min-width: 0; min-height: 0; display: flex; flex-direction: column; padding-top: 2px; }
-#meSay { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-wrap: anywhere; margin: 0 0 4px; }
-#meSay.stage { color: var(--dim); font-style: italic; }
+/* the talk: the thread so far (his lines in ink, Orv's earlier lines dim), then Orv's last words.
+   "many thanks" folds it away; the log keeps every word. */
+#meThread { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; margin: 0 0 4px; }
+#meTalk { font-size: 13px; line-height: 1.35; }
+#meTalk li { margin: 0 0 6px; overflow-wrap: anywhere; }
+#meTalk li.orv { color: var(--dim); }
+#meTalk li.stage { color: var(--dim); }
+#meTalk:empty { display: none; }
+#meSay { overflow-wrap: anywhere; margin: 0; }
+#meSay.stage { color: var(--dim); }
+/* the groups of the kingdom (the state of the kingdom): words, not boxes; a tapped one lights its stars */
+#meGroups { display: flex; flex-wrap: wrap; gap: 0 10px; padding: 0 0 2px; }
+#meGroups:empty { display: none; }
+#meGroups button { min-height: 32px; min-width: 0; padding: 0; color: var(--dim); font-size: 13px;
+                   text-decoration: underline; text-decoration-color: var(--faint); text-underline-offset: 4px; }
+#meGroups button[aria-pressed="true"] { color: var(--ink); font-weight: 700; text-decoration-color: var(--ink); }
+#meSky .off text { fill: var(--dim); }
+#meSky .lit text { font-weight: 700; }
+/* the slots: where modules (orv-*.js) draw. Empty, they take no room. */
+.slot:empty { display: none; }
+#slotTop { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: 0 6px; overflow: hidden; }
+#slotChat, #slotCorner { min-width: 0; overflow-wrap: anywhere; }
+#slotOverlay { position: fixed; inset: 0; z-index: 20; pointer-events: none; }
+#slotOverlay > * { pointer-events: auto; }
 #meKey { flex: 0 0 auto; }
 #meKey p { color: var(--dim); }
 #meWords { flex: 0 0 auto; }
@@ -234,7 +284,7 @@ summary::-webkit-details-marker { display: none; }
 </style>
 </head>
 <body>
-<nav id="tabs" aria-label="panes">
+<nav id="tabs" aria-label="panes" hidden>
   <button type="button" id="toMe">kingdom</button>
   <button type="button" data-pane="0">script</button>
   <button type="button" data-pane="1">home</button>
@@ -242,7 +292,7 @@ summary::-webkit-details-marker { display: none; }
   <span id="road"></span>
 </nav>
 
-<main id="track">
+<main id="track" hidden>
   <section class="pane" id="pScript" aria-label="script">
     <p class="cue" id="scriptHead"></p>
     <div id="script"></div>
@@ -307,6 +357,7 @@ summary::-webkit-details-marker { display: none; }
 <main id="me" hidden aria-label="your kingdom">
   <header id="meTop" title="pull down for projects · keep · restore">
     <p class="cue" id="meName"></p>
+    <div id="slotTop" class="slot"></div>
     <button type="button" id="meNudge" class="quiet" hidden>keep today?</button>
   </header>
   <div id="meShelf" hidden>
@@ -328,10 +379,11 @@ summary::-webkit-details-marker { display: none; }
     </div>
     <div id="vseam" class="seam" role="separator" aria-orientation="vertical" tabindex="0" aria-label="High King Leevzo — drag to move this border; double-tap to put it back"></div>
     <div id="meRight">
-      <div id="meSkyCol"><svg id="meSky" role="group" aria-label="the constellation of your tasks"></svg><p class="cue" id="meCount"></p></div>
+      <div id="meSkyCol"><div id="meGroups" role="group" aria-label="the groups of your kingdom"></div><div id="slotSky" class="slot"></div><svg id="meSky" role="group" aria-label="the constellation of your tasks"></svg><p class="cue" id="meCount"></p></div>
       <div id="hseam" class="seam" role="separator" aria-orientation="horizontal" tabindex="0" aria-label="The Lucky — drag to move this border; double-tap to put it back"></div>
       <div id="meCorner">
-        <p id="meSay" aria-live="polite"></p>
+        <div id="meThread"><ol id="meTalk" aria-label="the talk so far"></ol><p id="meSay" aria-live="polite"></p><div id="slotChat" class="slot"></div></div>
+        <div id="slotCorner" class="slot"></div>
         <div id="meKey" hidden>
           <p id="meKeyLine"></p>
           <div class="row" style="flex-wrap:nowrap">
@@ -347,6 +399,7 @@ summary::-webkit-details-marker { display: none; }
   <div id="swipe" aria-hidden="true" hidden></div>
   <p id="ghost" aria-hidden="true" hidden></p>
 </main>
+<div id="slotOverlay" class="slot"></div>
 
 <script src="./palette333.js"></script>
 <script src="./ink-core.js"></script>
@@ -384,7 +437,7 @@ const KNOBS = {
     carrying: 'the King’s own kingdom',  // the hot context's "You are carrying …" line
     hello: '(Orv sits in the corner, one eye on you.)',
     keyLine: 'Orv needs a key — paste it here',
-    sky: { cols: 3, dx: 58, dy: 66, pad: 22, arc: [0, 8, 0], r: 6, ring: 11, mark: 9, hit: 22, labelDy: 20, labelMax: 9, font: 13 },
+    sky: { cols: 3, dx: 58, dy: 66, pad: 30, arc: [0, 8, 0], r: 6, ring: 11, mark: 9, hit: 22, labelDy: 20, labelMax: 9, font: 13 },   // pad: room for a 9-letter word at the edge
     guardPx: [32, 24, 16, 8],           // the crossguard: the largest of these that fits whole on one line (Dogica is pixels: multiples of 8)
     bladePx: 14, handlePx: 16,          // blade and handle words; both below the crossguard's smallest
     swipeLock: 10,                      // px of movement before a drag is a swipe (mostly sideways) or a scroll (mostly up/down)
@@ -416,20 +469,50 @@ const KNOBS = {
       archive: ['#######', '#.....#', '#######', '.#...#.', '.#.#.#.', '.#...#.', '.#####.']
     },
     wordMax: 16, lineMax: 140, sayMax: 600, opsMax: 12, afterMax: 8, tasksMax: 2000,
+    groupsMax: 64,                      // the groups of the kingdom (Outlandish, Grants…): a state of the kingdom, not a list of chores
     rawMax: 2000,                       // characters of an unparsed reply kept in the log
     idsMax: 1200,                       // characters of the id list in Orv's system words
+    groupsChars: 700,                   // characters of the groups line in Orv's system words
+    talkMax: 40, talkChars: 1400,       // the talk kept on the glass until "many thanks" · how much of it Orv rereads each turn
+    askMax: 2000,                       // characters of a module's ask (and its answer) kept in the log, verbatim up to here
     tokens: 700,                        // a say plus twelve ops needs more room than a chat line
     fast: ['instant', 'flash-lite', 'flash', 'haiku', 'mini', 'fast', 'lite', 'small', '8b'],   // name hints, in order, for a fast default
     notChat: /whisper|tts|embed|guard|image|vision|audio|realtime|transcri|search|compound|moderation|dall-e|sora|codex|playai/i,
+    anthropic: {                        // the Anthropic door: current models think before they answer, and the thinking counts
+      tokens: 4096,                     //   against max_tokens, so 700 can come back empty. Thinking stays ON (it cannot be
+      effort: 'low',                    //   switched off on the newest models); a low effort keeps Orv quick and cheap. A door that
+      timeoutMs: 90000                  //   refuses the effort field (an older model) is asked again plainly, once.
+    },
+    thanks: /\bmany\s+thanks\b/i,       // his words that close the talk: the ritual, the held ops applied, the thread folded
+    bow: '(Orv bows. The talk folds into the kingdom.)',
+    modes: ['advice', 'answer', 'action'],          // how Orv helps (the night order): action applies his ops now; advice and
+    meters: ['immersive', 'balanced', 'focus'],     //   answer hold them until "many thanks". The story meter: full world ↔ plain focus.
+    settings: { mode: 'action', meter: 'balanced', typed: false },   // defaults; ink.me.settings overrides, modules add their own keys
+    typedCps: 36,                       // Orv's words typed out, characters a second, stepped at the rig's 12 fps (the machine moves in steps)
+    knobs: {                            // THE LOOK (the Jev slot: "speak and the design changes in front of your eyes"). Each knob
+      words:  { steps: [-2, -1, 0, 1, 2], dflt: 2 },                 // is an index into fixed steps, clamped at both ends, so a
+      blade:  [10, 12, 14, 16, 18], handle: [12, 14, 16, 20, 24],    // chooser can only pick from the menu the code holds out.
+      guard:  [[16, 8], [24, 16, 8], [32, 24, 16, 8], [40, 32, 24, 16, 8], [48, 40, 32, 24, 16, 8]],   // Dogica in multiples of 8
+      ground: { steps: ['#303030', '#3B3B3B', '#454545', '#4F4F4F', '#585858'], dflt: 2 },              // greys only: R=G=B, so no brown can exist here
+      orv:    { steps: [1, 2, 3, 4], dflt: 1 },                      // the one Orv at an integer scale; never redrawn
+      sky:    { steps: [0.8, 0.9, 1, 1.12, 1.25], dflt: 2 },         // the constellation's spacing
+      width:  0.08,                     // a "wider"/"narrower" moves the sword's seam this share of the glass (his hand's seam, logged)
+      back:   20                        // the looks kept for "put it back"
+    },
+    sayRules: 12,                       // a look phrase is short (at most this many words) and made only of the look's own words
     rule: 'Answer ONLY with one JSON object and nothing else: {"say":"…","ops":[…]}. ' +
       '"say": at most 600 characters, in your voice, plain words. ' +
       '"ops": what his words change, in order, at most 12, chosen ONLY from: ' +
-      '{"op":"add","word":"OneWord","text":"the task, at most 140 characters","after":["<id>"]} (after is optional) · ' +
+      '{"op":"add","word":"OneWord","text":"the task, at most 140 characters","after":["<id>"],"group":"<group id>"} (after and group are optional) · ' +
       '{"op":"done","id":"<id>"} · {"op":"undone","id":"<id>"} · {"op":"link","a":"<id>","b":"<id>"} (b comes after a) · ' +
-      '{"op":"one","id":"<id>"} (sets THE ONE THING) · {"op":"edit","id":"<id>","word":"…","text":"…"}. ' +
-      'A word is ONE word of at most 16 characters. Use only the ids above; tasks you add take the next ids in order: {next}. ' +
+      '{"op":"one","id":"<id>"} (sets THE ONE THING) · {"op":"edit","id":"<id>","word":"…","text":"…","group":"<group id>"} · ' +
+      '{"op":"group","word":"OneWord","text":"what this part of the kingdom is"} (a new group: a studio, a book, a door; groups hold tasks). ' +
+      'A word is ONE word of at most 16 characters. Use only the ids above; tasks you add take the next ids in order: {next}; ' +
+      'groups you add take the next group ids in order: {gnext}. ' +
       'Nothing is ever deleted. If his words name no deed, "ops" is [].'
-  }
+  },
+  modules: ['orv-hex.js', 'orv-ritual.js', 'orv-settings.js', 'orv-onboard.js', 'orv-card.js', 'orv-decide.js'],   // each optional
+  modulesWaitMs: 1500                   // the glass waits at most this long for the modules before it opens
 };
 const BOX = 'monomyth.focus.byok.v1';   // the Sword's key box: read for Orv's key; personal mode writes a pasted key into it (same shape as _glass.js)
 /* the doors, found by the key's stamp (the same stamps as _glass.js). URLs only: the door names its
@@ -455,6 +538,9 @@ const show = (id, on) => $(id).toggleAttribute('hidden', !on);   // an attribute
 function mk(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = String(text); return e; }
 const clip = (s, n) => { const a = Array.from(String(s)); return a.length <= n ? String(s) : a.slice(0, n - 1).join('') + '…'; };
 const iso = () => new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+/* a write the phone refused, said in plain words (never the browser's own message): his room is full, or shut */
+const full = e => (e && (e.name === 'QuotaExceededError' || e.code === 22 || /quota/i.test(String(e.message)))
+  ? 'this phone’s room for the kingdom is full: tap keep to save it, then make room' : 'this phone would not keep that just now');
 function when(at) {
   const d = new Date(at), p = n => String(n).padStart(2, '0');
   return isNaN(d) ? '' : p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
@@ -469,7 +555,7 @@ function getFor(p, name, dflt) {
 const get = (name, dflt) => getFor(P, name, dflt);
 function put(name, v) {
   if (!okId(P)) return;
-  try { localStorage.setItem('ink.' + P + '.' + name, JSON.stringify(v)); } catch (e) { S.note = 'this phone would not keep that (' + (e.message || e) + ')'; }
+  try { localStorage.setItem('ink.' + P + '.' + name, JSON.stringify(v)); } catch (e) { S.note = full(e); }
 }
 function projects() {                                           // every inkling this glass holds, most recently opened first
   const out = [];
@@ -520,6 +606,7 @@ function adopt(v) {
 /* ═══ OPEN A PROJECT ═══ */
 function enter(p) {
   meLetGo(); showMode(false);
+  $('track').scrollLeft = $('track').clientWidth;                 // a project opens on HOME, the middle pane
   if (S.box) S.box.stop();
   P = p;
   S.inv = get('invite', null); S.me = get('me', { n: 0, name: '', color: INK.INKS[0], joined: false });
@@ -655,10 +742,12 @@ function doorOf(k) {
   if (k.startsWith('xai-')) return 'xai'; if (k.startsWith('AIza') || k.startsWith('AQ.')) return 'gemini'; if (k.startsWith('sk-')) return 'openai';
   return 'unknown';
 }
-function fetchT(url, init) {
-  const c = new AbortController(), t = setTimeout(() => c.abort(), KNOBS.orvTimeoutMs);
+function fetchT(url, init, ms) {
+  const c = new AbortController(), t = setTimeout(() => c.abort(), ms || KNOBS.orvTimeoutMs);
   return fetch(url, Object.assign({}, init, { signal: c.signal, referrerPolicy: 'no-referrer' })).finally(() => clearTimeout(t));
 }
+/* The Anthropic door answers a browser only when the request says so: anthropic-dangerous-direct-browser-access.
+   His own key, from his own phone, to Anthropic and nowhere else (the key never leaves this glass otherwise). */
 function headers(d, key) {
   if (d === 'anthropic') return { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' };
   if (d === 'gemini') return { 'content-type': 'application/json', 'x-goog-api-key': key };
@@ -681,13 +770,26 @@ async function pickModel(d, key) {                              // the box's own
   kept[d] = ids[0]; put('door', kept);
   return ids[0];
 }
+/* one Anthropic call, the same for both glasses: thinking stays on (the newest models cannot switch it off), so
+   max_tokens is roomy and the effort low; a 400 with the effort field is asked again without it, once; a refusal
+   is said plainly; only text blocks are read (thinking blocks carry no words for him) */
+async function anthropicCall(key, model, system, words) {
+  const A = KNOBS.me.anthropic, body = { model, max_tokens: A.tokens, messages: [{ role: 'user', content: words }], output_config: { effort: A.effort } };
+  if (system) body.system = system;
+  const go = async () => {
+    const r = await fetchT(DOORS.anthropic.chat, { method: 'POST', headers: headers('anthropic', key), body: JSON.stringify(body) }, A.timeoutMs);
+    let o = {}; try { o = await r.json(); } catch (e) { /* no body */ }
+    return { r, o };
+  };
+  let { r, o } = await go();
+  if (!r.ok && r.status === 400 && body.output_config) { delete body.output_config; ({ r, o } = await go()); }
+  if (!r.ok) { const e = o && o.error; throw new Error(String((e && (e.message || e)) || r.statusText || 'status ' + r.status)); }
+  if (o.stop_reason === 'refusal') throw new Error('the door declined to answer' + (o.stop_details && o.stop_details.category ? ' (' + o.stop_details.category + ')' : ''));
+  return (o.content || []).filter(c => c && c.type === 'text').map(c => c.text || '').join('');
+}
 async function talk(d, key, model, prompt) {
   const H = headers(d, key);
-  if (d === 'anthropic') {
-    const r = await fetchT(DOORS[d].chat, { method: 'POST', headers: H, body: JSON.stringify({ model, max_tokens: KNOBS.orvTokens, messages: [{ role: 'user', content: prompt }] }) });
-    const o = await r.json(); if (!r.ok) throw new Error((o.error && o.error.message) || r.statusText);
-    return (o.content || []).map(c => c.text || '').join('');
-  }
+  if (d === 'anthropic') return anthropicCall(key, model, '', prompt);
   if (d === 'gemini') {
     const r = await fetchT(DOORS[d].chat + encodeURIComponent(model) + ':generateContent', { method: 'POST', headers: H,
       body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: KNOBS.orvTokens } }) });
@@ -756,7 +858,7 @@ const aiMark = l => { const m = l.door + (l.model ? ':' + l.model : ''); return 
                  Every pose stands on the same row (THE FEET ON THE GROUND, 09-15).
      LISTENING   words in the box, or Orv reading: he holds pose 2, a little livelier (OrvSummon2's mood).
      Reduced motion: one still frame. Tap = send (Day One's portal: words in the box go; none, the box opens). */
-const ORV = { listening: () => false };
+const ORV = { listening: () => false, scale: () => KNOBS.orvScale, repaint: () => {} };
 function orvRig(rows) {
   const h = rows.length;
   const width = rows.map(r => { let lo = 1e9, hi = -1; for (let x = 0; x < r.length; x++) if (r[x] !== '.') { if (x < lo) lo = x; if (x > hi) hi = x; } return hi < 0 ? 0 : hi - lo + 1; });
@@ -774,7 +876,8 @@ async function orvBoot() {
   const cv = $('orvCv');
   let O;
   try { O = await (await fetch(KNOBS.orvSprite)).json(); } catch (e) { return; }
-  const R = KNOBS.summon, S = KNOBS.orvScale, w = O.w, h = O.h, BEAT = KNOBS.orvBeat;
+  const R = KNOBS.summon, w = O.w, h = O.h, BEAT = KNOBS.orvBeat;
+  let S = ORV.scale();                                              // integer scale; the look may change it (the one Orv, never redrawn)
   const lowest = rows => { for (let y = rows.length - 1; y >= 0; y--) if (/[^.]/.test(rows[y])) return y; return rows.length - 1; };
   const floor = Math.max.apply(null, O.frames.map(lowest));
   const poses = O.frames.map(raw => {
@@ -790,10 +893,14 @@ async function orvBoot() {
     sx.putImageData(img, 0, 0);
     return { src, rig: orvRig(rows) };
   });
-  cv.width = (w + R.mx * 2) * S; cv.height = (h + R.my) * S;
-  cv.style.width = cv.width + 'px'; cv.style.height = cv.height + 'px';
-  document.documentElement.style.setProperty('--orv-w', cv.width + 'px'); document.documentElement.style.setProperty('--orv-h', cv.height + 'px');
-  const ctx = cv.getContext('2d'); ctx.imageSmoothingEnabled = false;
+  const ctx = cv.getContext('2d');
+  const size = () => {
+    cv.width = (w + R.mx * 2) * S; cv.height = (h + R.my) * S;
+    cv.style.width = cv.width + 'px'; cv.style.height = cv.height + 'px';
+    document.documentElement.style.setProperty('--orv-w', cv.width + 'px'); document.documentElement.style.setProperty('--orv-h', cv.height + 'px');
+    ctx.imageSmoothingEnabled = false;
+  };
+  size();
   const d = { sx: 0, vx: 0, clk: 0, next: 2.0 };
   let f = 0;
   const cl = (v, m) => Math.max(-m, Math.min(m, v));
@@ -819,9 +926,15 @@ async function orvBoot() {
     ctx.drawImage(src, 0, 0, w, neckY + 1, X + swayH * S, Y - rise * S, w * S, (neckY + 1) * S);                                       // the head, riding on top
     cv.dataset.pose = String(p);
   };
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) { paint(0, R.energy[0]); return; }
+  const rescale = () => { const s = ORV.scale(); if (s === S) return false; S = s; size(); return true; };
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    paint(0, R.energy[0]);
+    ORV.repaint = () => { rescale(); paint(0, R.energy[0]); };
+    return;
+  }
   /* the pose clock is its own (OrvSummon2: setTimeout(BEAT[f])); a new pose is painted at once, the rig ticks at 12 fps */
   let last = 0, timer = 0, was = null, fresh = true;
+  ORV.repaint = () => { rescale(); fresh = true; };
   const arm = () => { clearTimeout(timer); timer = setTimeout(() => { f = (f + 1) % poses.length; fresh = true; arm(); }, BEAT[f % BEAT.length]); };
   const loop = ts => {
     const t = ts / 1000, held = ORV.listening(), E = R.energy[held ? 1 : 0];
@@ -1060,13 +1173,15 @@ function pasteBox() {
 /* ═══ PERSONAL MODE (§12): his own kingdom ═══════════════════════════════════════════════════════
    The ONLY ways his state changes: applyOp() on an op that checkOp() passed — from his hand (logged
    who:'k') or from Orv's JSON (logged who:'ai:<door>:<model>'). The log only ever grows. */
-const ME = { on: false, st: null, open: null, edit: null, say: null, busy: false, note: '', sky: null, swiped: 0 };
-ORV.listening = () => (ME.on ? ME.busy || !!$('meWords').value.trim() : asking || !!$('words').value.trim());
+const ME = { on: false, st: null, open: null, edit: null, say: null, busy: false, note: '', sky: null, swiped: 0,
+             talk: [], group: null, typing: null, claimed: {} };
+ORV.listening = () => (ME.on ? ME.busy || !!ME.typing || !!$('meWords').value.trim() : asking || !!$('words').value.trim());
+ORV.scale = () => { const K = KNOBS.me.knobs.orv; return K.steps[lookIdx('orv')] || KNOBS.orvScale; };
 const meKey = k => 'ink.me.' + k;
 function meGet(k, d) { try { const v = localStorage.getItem(meKey(k)); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }
 function mePut(k, v) {
   try { localStorage.setItem(meKey(k), JSON.stringify(v)); return true; }
-  catch (e) { ME.note = 'this phone would not keep that (' + (e.message || e) + ')'; return false; }
+  catch (e) { ME.note = full(e); return false; }
 }
 const isoMs = () => new Date().toISOString();
 const today = () => { const d = new Date(), p = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); };
@@ -1077,8 +1192,9 @@ function logIt(e) {                                              // append-only:
 }
 const nOf = id => parseInt(String(id).slice(1), 36) || 0;
 const len = s => Array.from(String(s)).length;
-const emptyState = () => ({ v: 1, tasks: [], one: null, n: 0 });
-const isEmpty = s => !s || !Array.isArray(s.tasks) || !s.tasks.length;
+const emptyState = () => ({ v: 1, tasks: [], groups: [], one: null, n: 0, gn: 0 });
+const isEmpty = s => !s || ((!Array.isArray(s.tasks) || !s.tasks.length) && (!Array.isArray(s.groups) || !s.groups.length));
+const copyOf = x => JSON.parse(JSON.stringify(x));
 
 /* the limits, shared by his hand and Orv's ops */
 function wordBad(w) {
@@ -1092,42 +1208,71 @@ function textBad(x) {
   return !v ? 'the line is empty' : len(v) > KNOBS.me.lineMax ? 'the line is over ' + KNOBS.me.lineMax + ' characters' : '';
 }
 
-/* a stored, seeded or restored kingdom, checked whole; anything off and it is refused (null) */
+function groupTextBad(x) {                                       // a group's line may be empty; never over the limit
+  if (x === undefined || x === null) return '';
+  if (typeof x !== 'string') return 'the line is not text';
+  return len(x.trim()) > KNOBS.me.lineMax ? 'the line is over ' + KNOBS.me.lineMax + ' characters' : '';
+}
+const okGroupId = id => typeof id === 'string' && /^g[0-9a-z]{1,8}$/.test(id);
+
+/* a stored, seeded or restored kingdom, checked whole; anything off and it is refused (null).
+   Groups (2026-10-01, §11): {id:'g'+base36, word, text}; a task's group is a group id or null. A kingdom from
+   before groups reads as one with no groups, every task ungrouped. A task naming a group that is not there
+   is kept, ungrouped. */
 function cleanState(s) {
   if (!s || typeof s !== 'object') return null;
   if (s.keys && typeof s.keys === 'object') s = s.keys[meKey('state')];     // a "keep" file
   else if (s.state && typeof s.state === 'object') s = s.state;
   if (!s || typeof s !== 'object' || !Array.isArray(s.tasks) || s.tasks.length > KNOBS.me.tasksMax) return null;
+  if (s.groups != null && (!Array.isArray(s.groups) || s.groups.length > KNOBS.me.groupsMax)) return null;
+  const gseen = new Set(), groups = [];
+  for (const g of s.groups || []) {
+    if (!g || typeof g !== 'object' || !okGroupId(g.id) || gseen.has(g.id) || wordBad(g.word) || groupTextBad(g.text)) return null;
+    gseen.add(g.id);
+    groups.push({ id: g.id, word: g.word.trim(), text: typeof g.text === 'string' ? g.text.trim() : '' });
+  }
   const seen = new Set(), tasks = [];
   for (const t of s.tasks) {
     if (!t || typeof t !== 'object' || typeof t.id !== 'string' || !/^t[0-9a-z]{1,8}$/.test(t.id) || seen.has(t.id)) return null;
     if (wordBad(t.word) || textBad(t.text)) return null;
     seen.add(t.id);
     const o = { id: t.id, word: t.word.trim(), text: t.text.trim(), after: Array.isArray(t.after) ? t.after : [], done: t.done === true,
-                at: typeof t.at === 'string' ? t.at : isoMs() };
+                at: typeof t.at === 'string' ? t.at : isoMs(), group: typeof t.group === 'string' && gseen.has(t.group) ? t.group : null };
     if (o.done && typeof t.doneAt === 'string') o.doneAt = t.doneAt;
     if (t.deleted === true) { o.deleted = true; o.deletedAt = typeof t.deletedAt === 'string' ? t.deletedAt : o.at; }      // a tombstone stays a tombstone
     if (t.archived === true) { o.archived = true; o.archivedAt = typeof t.archivedAt === 'string' ? t.archivedAt : o.doneAt || o.at; }
     tasks.push(o);
   }
   tasks.forEach(t => { t.after = Array.from(new Set(t.after.filter(a => typeof a === 'string' && seen.has(a) && a !== t.id))); });
-  const top = tasks.reduce((m, t) => Math.max(m, nOf(t.id)), 0);
-  return { v: 1, tasks, one: typeof s.one === 'string' && seen.has(s.one) ? s.one : null,
-           n: Math.max(top, Number.isSafeInteger(s.n) && s.n > 0 ? s.n : 0) };     // ids count up and are never reused
+  const top = tasks.reduce((m, t) => Math.max(m, nOf(t.id)), 0), gtop = groups.reduce((m, g) => Math.max(m, nOf(g.id)), 0);
+  return { v: 1, tasks, groups, one: typeof s.one === 'string' && seen.has(s.one) ? s.one : null,
+           n: Math.max(top, Number.isSafeInteger(s.n) && s.n > 0 ? s.n : 0),        // ids count up and are never reused
+           gn: Math.max(gtop, Number.isSafeInteger(s.gn) && s.gn > 0 ? s.gn : 0) };  // group ids the same
 }
 
-/* story order: the after-chains from their roots (children by id), then any loop, then the rest by id */
+/* story order: the after-chains from their roots (children by id), then any loop, then the rest by id. CAUSAL: a
+   task is placed only once every task it comes after is placed (Hans, after Squatch and Tag, waits for both), so the
+   handle never shows a word above the word it waits on. The chains that lead to THE ONE THING are walked first, so
+   what hangs from the crossguard is what its own deed opens. */
 /* the living tasks: a deleted or archived one is kept in state but is gone from the sword, the sky and Orv */
 const live = st => st.tasks.filter(t => !t.deleted && !t.archived);
 function storyOrder(st) {
-  const all = live(st).sort((a, b) => nOf(a.id) - nOf(b.id)), ids = new Set(all.map(t => t.id));
-  const kids = new Map(all.map(t => [t.id, []]));
-  all.forEach(t => t.after.forEach(a => { if (ids.has(a)) kids.get(a).push(t); }));
+  const all = live(st).sort((a, b) => nOf(a.id) - nOf(b.id)), ids = new Set(all.map(t => t.id)), by = new Map(all.map(t => [t.id, t]));
+  const kids = new Map(all.map(t => [t.id, []])), wait = new Map(all.map(t => [t.id, 0]));
+  all.forEach(t => new Set(t.after).forEach(a => { if (ids.has(a)) { kids.get(a).push(t); wait.set(t.id, wait.get(t.id) + 1); } }));
   const out = [], seen = new Set();
-  const walk = t => { if (seen.has(t.id)) return; seen.add(t.id); out.push(t); kids.get(t.id).forEach(walk); };
-  all.filter(t => !t.after.some(a => ids.has(a)) && kids.get(t.id).length).forEach(walk);
-  all.filter(t => !seen.has(t.id) && t.after.length).forEach(walk);
-  all.forEach(t => { if (!seen.has(t.id)) { seen.add(t.id); out.push(t); } });
+  const place = t => { seen.add(t.id); out.push(t); kids.get(t.id).forEach(k => { wait.set(k.id, wait.get(k.id) - 1); if (!seen.has(k.id) && wait.get(k.id) <= 0) place(k); }); };
+  const walk = t => { if (!seen.has(t.id)) place(t); };
+  const roots = all.filter(t => !t.after.some(a => ids.has(a)) && kids.get(t.id).length);
+  const one = typeof st.one === 'string' && by.get(st.one);
+  if (one && !one.done) {                                        // the one thing's own roots first (its ancestors, by id)
+    const up = new Set(), stack = [one.id];
+    while (stack.length) { const id = stack.pop(); if (up.has(id)) continue; up.add(id); (by.get(id) || { after: [] }).after.forEach(a => { if (ids.has(a)) stack.push(a); }); }
+    roots.filter(t => up.has(t.id)).forEach(walk);
+  }
+  roots.forEach(walk);
+  for (let t; (t = all.find(x => !seen.has(x.id) && x.after.some(a => ids.has(a))));) walk(t);   // a ring (none should stand): broken at its lowest id
+  all.forEach(walk);
   return out;
 }
 /* THE ONE THING: his (or Orv's) pick while it is open; else the first open task in story order */
@@ -1144,19 +1289,42 @@ function reaches(st, from, to) {                                 // does `from` 
   return false;
 }
 
-/* ── Orv's Action: the six ops, checked one by one ('' = good, else the reason it is dropped) ── */
+/* the groups: found by id (and, for Orv's sake, by their word when it is not an id) */
+const groupsOf = st => (st && Array.isArray(st.groups) ? st.groups : []);
+const groupById = (st, id) => groupsOf(st).find(g => g.id === id) || null;
+function groupRef(st, v) {                                       // a group named in an op → its id, or '' when no group answers
+  if (typeof v !== 'string') return '';
+  if (groupById(st, v)) return v;
+  const w = v.trim().toLowerCase(), g = groupsOf(st).find(x => x.word.toLowerCase() === w);
+  return g ? g.id : '';
+}
+const groupClash = (st, word, id) => groupsOf(st).some(g => g.id !== id && g.word.toLowerCase() === String(word).trim().toLowerCase());
+
+/* ── Orv's Action: the ops, checked one by one ('' = good, else the reason it is dropped) ── */
 function checkOp(st, op) {
   if (!op || typeof op !== 'object' || Array.isArray(op)) return 'not an op';
   const task = id => (typeof id === 'string' && live(st).find(t => t.id === id)) || null;
   const unknown = id => 'unknown id ' + clip(String(id), 20);
+  const badGroup = () => (op.group === undefined || op.group === null || groupRef(st, op.group) ? '' : 'unknown group ' + clip(String(op.group), 20));
   switch (op.op) {
     case 'add': {
-      const bad = wordBad(op.word) || textBad(op.text); if (bad) return bad;
+      const bad = wordBad(op.word) || textBad(op.text) || badGroup(); if (bad) return bad;
       if (op.after == null) return '';
       if (!Array.isArray(op.after)) return 'after is not a list';
       if (op.after.length > KNOBS.me.afterMax) return 'after names too many tasks';
       for (const a of op.after) if (!task(a)) return unknown(a);
       return '';
+    }
+    case 'group': {                                              // a new group of the kingdom, or (with an id) a group renamed
+      if (op.id != null) {
+        if (!groupById(st, op.id)) return 'unknown group ' + clip(String(op.id), 20);
+        if (op.word === undefined && op.text === undefined) return 'nothing to change in the group';
+        if (op.word !== undefined) { const b = wordBad(op.word) || (groupClash(st, op.word, op.id) ? 'a group by that word already exists' : ''); if (b) return b; }
+        return groupTextBad(op.text);
+      }
+      const bad = wordBad(op.word) || groupTextBad(op.text); if (bad) return bad;
+      if (groupClash(st, op.word, null)) return 'a group by that word already exists';
+      return groupsOf(st).length >= KNOBS.me.groupsMax ? 'the kingdom holds ' + KNOBS.me.groupsMax + ' groups at most' : '';
     }
     case 'done': { const t = task(op.id); return !t ? unknown(op.id) : t.done ? 'already done' : ''; }
     case 'undone': { const t = task(op.id); return !t ? unknown(op.id) : !t.done ? 'not done' : ''; }
@@ -1170,37 +1338,55 @@ function checkOp(st, op) {
     case 'archive': { const t = task(op.id); return !t ? unknown(op.id) : !t.done ? 'only a done task is archived' : ''; }
     case 'edit': {
       if (!task(op.id)) return unknown(op.id);
-      if (op.word === undefined && op.text === undefined) return 'nothing to edit';
-      return (op.word !== undefined && wordBad(op.word)) || (op.text !== undefined && textBad(op.text)) || '';
+      if (op.word === undefined && op.text === undefined && op.group === undefined) return 'nothing to edit';
+      return (op.word !== undefined && wordBad(op.word)) || (op.text !== undefined && textBad(op.text)) || badGroup() || '';
     }
     case 'move': {                                               // his hand only: a word dropped between two words
       if (!task(op.id)) return unknown(op.id);
       for (const k of ['after', 'before']) if (op[k] != null && (!task(op[k]) || op[k] === op.id)) return unknown(op[k]);
       if (op.after != null && op.after === op.before) return 'that is not between two words';
-      const sim = JSON.parse(JSON.stringify(st)); applyOp(sim, normOp(op), '');
+      const sim = JSON.parse(JSON.stringify(st)); applyOp(sim, normOp(op, st), '');
       return loops(sim) ? 'that move would make a loop' : '';
     }
     default: return 'unknown op ' + clip(String(op.op), 20);
   }
 }
-function normOp(op) {                                            // only the known fields, trimmed
-  const o = { op: op.op };
-  if (op.op === 'add') { o.word = op.word.trim(); o.text = op.text.trim(); if (Array.isArray(op.after) && op.after.length) o.after = Array.from(new Set(op.after)); }
+function normOp(op, st) {                                        // only the known fields, trimmed; a group named by word becomes its id
+  const o = { op: op.op }, gid = v => (v === null ? null : groupRef(st, v) || null);
+  if (op.op === 'add') {
+    o.word = op.word.trim(); o.text = op.text.trim(); if (Array.isArray(op.after) && op.after.length) o.after = Array.from(new Set(op.after));
+    if (op.group != null) o.group = gid(op.group);
+  }
+  else if (op.op === 'group') {
+    if (op.id != null) o.id = op.id;
+    if (op.word !== undefined) o.word = op.word.trim();
+    if (op.text !== undefined && op.text !== null) o.text = op.text.trim(); else if (op.id == null) o.text = '';
+  }
   else if (op.op === 'link') { o.a = op.a; o.b = op.b; }
   else if (op.op === 'move') { o.id = op.id; o.after = op.after || null; o.before = op.before || null; }
-  else { o.id = op.id; if (op.op === 'edit') { if (op.word !== undefined) o.word = op.word.trim(); if (op.text !== undefined) o.text = op.text.trim(); } }
+  else {
+    o.id = op.id;
+    if (op.op === 'edit') { if (op.word !== undefined) o.word = op.word.trim(); if (op.text !== undefined) o.text = op.text.trim(); if (op.group !== undefined) o.group = gid(op.group); }
+  }
   return o;
 }
 function applyOp(st, o, at) {                                    // o has passed checkOp; never deletes anything (a delete is a mark)
+  if (o.op === 'group') {
+    if (!Array.isArray(st.groups)) st.groups = [];
+    if (o.id) { const g = st.groups.find(x => x.id === o.id); if (o.word !== undefined) g.word = o.word; if (o.text !== undefined) g.text = o.text; return; }
+    st.gn = (Number.isSafeInteger(st.gn) ? st.gn : 0) + 1;
+    st.groups.push({ id: 'g' + st.gn.toString(36), word: o.word, text: o.text || '' });
+    return;
+  }
   const t = o.id ? st.tasks.find(x => x.id === o.id) : null;
   if (o.op === 'delete') { t.deleted = true; t.deletedAt = at; if (st.one === t.id) st.one = null; return; }
   if (o.op === 'archive') { t.archived = true; t.archivedAt = at; return; }
-  if (o.op === 'add') { st.n += 1; st.tasks.push({ id: 't' + st.n.toString(36), word: o.word, text: o.text, after: (o.after || []).slice(), done: false, at }); }
+  if (o.op === 'add') { st.n += 1; st.tasks.push({ id: 't' + st.n.toString(36), word: o.word, text: o.text, after: (o.after || []).slice(), done: false, at, group: o.group || null }); }
   else if (o.op === 'done') { t.done = true; t.doneAt = at; }
   else if (o.op === 'undone') { t.done = false; delete t.doneAt; }
   else if (o.op === 'link') { const b = st.tasks.find(x => x.id === o.b); if (!b.after.includes(o.a)) b.after.push(o.a); }
   else if (o.op === 'one') st.one = o.id;
-  else if (o.op === 'edit') { if (o.word !== undefined) t.word = o.word; if (o.text !== undefined) t.text = o.text; }
+  else if (o.op === 'edit') { if (o.word !== undefined) t.word = o.word; if (o.text !== undefined) t.text = o.text; if (o.group !== undefined) t.group = o.group; }
   else if (o.op === 'move') {
     /* story order is the after-links, so a move rewrites them: whoever came after it now comes after what it
        came after; it comes after the word above the gap; the word below the gap comes after it */
@@ -1222,15 +1408,24 @@ function loops(st) {                                             // is there a r
   for (const id of at.keys()) if (visit(id)) return true;
   return false;
 }
-function runOps(st, ops) {                                       // valid ones applied in order; the rest dropped, with reasons
+/* a task op naming a group that is not there: the group id is dropped (and the drop noted), the task op goes on
+   ungrouped — his deed is never lost for a wrong label */
+function stripGroup(st, op, i, dropped) {
+  if (!op || typeof op !== 'object' || (op.op !== 'add' && op.op !== 'edit') || op.group === undefined || op.group === null) return op;
+  if (groupRef(st, op.group)) return op;
+  dropped.push({ i, reason: 'unknown group ' + clip(String(op.group), 20) + ' (the task stays ungrouped)', op: { op: op.op, group: op.group } });
+  const o = Object.assign({}, op); delete o.group; return o;
+}
+function runOps(st, ops, hand) {                                 // valid ones applied in order; the rest dropped, with reasons
   const applied = [], dropped = [], at = isoMs();
   if (!Array.isArray(ops)) return { applied, dropped: [{ i: 0, reason: 'ops is not a list', op: ops }] };
   ops.forEach((op, i) => {
     if (i >= KNOBS.me.opsMax) return dropped.push({ i, reason: 'more than ' + KNOBS.me.opsMax + ' ops in one reply', op });
-    if (op && (op.op === 'delete' || op.op === 'archive' || op.op === 'move')) return dropped.push({ i, reason: 'only his hand ' + (op.op === 'move' ? 'moves a word' : 'deletes or archives'), op });
+    if (!hand && op && (op.op === 'delete' || op.op === 'archive' || op.op === 'move')) return dropped.push({ i, reason: 'only his hand ' + (op.op === 'move' ? 'moves a word' : 'deletes or archives'), op });
+    op = stripGroup(st, op, i, dropped);
     const why = checkOp(st, op);
     if (why) return dropped.push({ i, reason: why, op });
-    const o = normOp(op); applyOp(st, o, at); applied.push(o);
+    const o = normOp(op, st); applyOp(st, o, at); applied.push(o);
   });
   return { applied, dropped };
 }
@@ -1268,7 +1463,40 @@ function orvSystem(st) {
     ids += (ids ? ' · ' : '') + bit;
   }
   const next = [1, 2, 3, 4].map(k => 't' + (st.n + k).toString(36)).join(', ') + '…';
-  return hot + '\nTask ids: ' + (ids || 'none yet') + '\n' + KNOBS.me.rule.replace('{next}', next);
+  const gn = Number.isSafeInteger(st.gn) ? st.gn : 0, gnext = [1, 2, 3].map(k => 'g' + (gn + k).toString(36)).join(', ') + '…';
+  /* the groups: the state of the kingdom, each with the words of its living tasks */
+  let groups = '';
+  for (const g of groupsOf(st)) {
+    const words = order.filter(t => t.group === g.id).map(t => t.word + (t.done ? ' (done)' : ''));
+    const bit = g.id + ' ' + g.word + (g.text ? ': ' + clip(g.text, 60) : '') + (words.length ? ' [' + words.join(', ') + ']' : '');
+    if (groups.length + bit.length + 3 > KNOBS.me.groupsChars) break;
+    groups += (groups ? ' · ' : '') + bit;
+  }
+  const lines = [hot, 'Groups: ' + (groups || 'none yet'), 'Task ids: ' + (ids || 'none yet')];
+  const g = ME.group && groupById(st, ME.group);
+  if (g) lines.push('He is looking at the group ' + g.word + (g.text ? ' (' + clip(g.text, 80) + ')' : '') + '.');
+  const thread = talkLines(KNOBS.me.talkChars);
+  if (thread) lines.push('The talk so far (he closes it with "many thanks"):\n' + thread);
+  const set = settings();
+  lines.push({ immersive: 'Story meter: immersive. Speak from inside his world: the kingdom, the court, the quest.',
+               balanced: 'Story meter: balanced. A touch of the story, mostly plain words.',
+               focus: 'Story meter: focus. Plain words only, no story, no metaphor. Short.' }[set.meter] || '');
+  lines.push({ advice: 'Mode: advice. Advise him; any ops you give wait until he says "many thanks".',
+               answer: 'Mode: answer. Answer what he asks; any ops you give wait until he says "many thanks".',
+               action: 'Mode: action. Your ops change his kingdom now.' }[set.mode] || '');
+  lines.push(KNOBS.me.rule.replace('{next}', next).replace('{gnext}', gnext));
+  return lines.filter(Boolean).join('\n');
+}
+/* the talk on the glass, oldest first, as plain lines for Orv to reread; the newest lines win the room */
+function talkLines(max) {
+  const out = [];
+  let room = max;
+  for (let i = ME.talk.length - 1; i >= 0 && room > 0; i--) {
+    const l = ME.talk[i], s = (l.who === 'k' ? 'King: ' : 'Orv: ') + clip(l.text, 300);
+    if (s.length > room) break;
+    out.unshift(s); room -= s.length + 1;
+  }
+  return out.join('\n');
 }
 
 /* the door, chosen by the key's stamp; the door lists its own models and a fast one is picked by name */
@@ -1291,94 +1519,217 @@ async function mePick(d, key) {
   writeBox(x => { x.lists = x.lists || {}; x.lists[d] = { ids, pick, at: isoMs() }; });
   return pick;
 }
-async function meCall(d, key, model, system, words) {
-  const H = headers(d, key), max = KNOBS.me.tokens;
+/* one call through a door. opts.json (default true): ask for JSON where the door has a JSON mode; opts.tokens: room */
+async function meCall(d, key, model, system, words, opts) {
+  opts = opts || {};
+  const H = headers(d, key), max = opts.tokens || KNOBS.me.tokens, json = opts.json !== false;
   const go = async (url, body) => {
     const r = await fetchT(url, { method: 'POST', headers: H, body: JSON.stringify(body) });
     let o = {}; try { o = await r.json(); } catch (e) { /* no body */ }
     return { r, o };
   };
   const fail = (r, o) => { const e = o && o.error; throw new Error(String((e && (e.message || e)) || r.statusText || 'status ' + r.status)); };
-  if (d === 'anthropic') {
-    const { r, o } = await go(DOORS[d].chat, { model, max_tokens: max, system, messages: [{ role: 'user', content: words }] });
-    if (!r.ok) fail(r, o);
-    return (o.content || []).map(c => c.text || '').join('');
-  }
+  if (d === 'anthropic') return anthropicCall(key, model, system, words);
   if (d === 'gemini') {
+    const cfg = { maxOutputTokens: max }; if (json) cfg.responseMimeType = 'application/json';
     const { r, o } = await go(DOORS[d].chat + encodeURIComponent(model) + ':generateContent', {
-      systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts: [{ text: words }] }],
-      generationConfig: { maxOutputTokens: max, responseMimeType: 'application/json' } });
+      systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts: [{ text: words }] }], generationConfig: cfg });
     if (!r.ok) fail(r, o);
     const c = ((o.candidates || [])[0] || {}).content;
     return ((c && c.parts) || []).map(x => x.text || '').join('');
   }
-  const body = { model, max_tokens: max, messages: [{ role: 'system', content: system }, { role: 'user', content: words }],
-                 response_format: { type: 'json_object' } };
+  const body = { model, max_tokens: max, messages: [{ role: 'system', content: system }, { role: 'user', content: words }] };
+  if (json) body.response_format = { type: 'json_object' };
   let { r, o } = await go(DOORS[d].chat, body);
-  if (!r.ok && r.status === 400) { delete body.response_format; ({ r, o } = await go(DOORS[d].chat, body)); }   // no JSON mode: ask plainly, parse the first {…}
+  if (!r.ok && r.status === 400 && body.response_format) { delete body.response_format; ({ r, o } = await go(DOORS[d].chat, body)); }   // no JSON mode: ask plainly, parse the first {…}
   if (!r.ok) fail(r, o);
   return (((o.choices || [])[0] || {}).message || {}).content || '';
 }
 
-function meSay(text, stage) { ME.say = { text, stage: !!stage }; }
+/* ── THE TALK: his lines and Orv's stay on the glass (ink.me.talk) until "many thanks" folds them away; the log
+   keeps every word either way. Orv rereads the talk each turn, so the conversation carries on. ── */
+function talkPush(who, text, stage) {
+  ME.talk.push({ who, text: String(text), stage: !!stage, at: isoMs() });
+  while (ME.talk.length > KNOBS.me.talkMax) ME.talk.shift();
+  mePut('talk', ME.talk);
+}
+/* Orv's words into the corner. opts.thread:false = not kept in the talk (a boot line, the bow);
+   opts.typed = typed out a few letters a step at the rig's 12 fps (the settings' "typed" turns it on for every reply) */
+function meSay(text, stage, opts) {
+  opts = opts || {};
+  text = clip(String(text == null ? '' : text), KNOBS.me.sayMax * 2);
+  stopTyping();
+  ME.say = { text, stage: !!stage, shown: null };
+  if (opts.thread !== false) talkPush('orv', text, stage);
+  if (opts.typed === true || (opts.typed !== false && !stage && settings().typed === true)) startTyping();
+}
+function startTyping() {
+  if (!ME.say || !ME.say.text || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const all = Array.from(ME.say.text), step = Math.max(1, Math.round(KNOBS.me.typedCps / KNOBS.summon.fps));
+  ME.say.shown = 0;
+  $('meSay').setAttribute('aria-busy', 'true');                  // the reader hears the line once, whole
+  ME.typing = setInterval(() => {
+    if (!ME.say) return stopTyping();
+    ME.say.shown = Math.min(all.length, ME.say.shown + step);
+    $('meSay').textContent = all.slice(0, ME.say.shown).join('');
+    pinThread();                                                 // the line grows down: the talk keeps its foot in sight
+    if (ME.say.shown >= all.length) stopTyping();
+  }, Math.round(1000 / KNOBS.summon.fps));
+}
+function stopTyping() { if (ME.typing) { clearInterval(ME.typing); ME.typing = null; } if (ME.say) ME.say.shown = null; $('meSay').removeAttribute('aria-busy'); }
 function meStage(key) {
   if (key && !DOORS[doorOf(key)]) return '(Orv squints at the key. No door answers to that stamp.)';
   const one = theOne(ME.st);
   return one ? '(No key in the box. Orv taps the gold word, ' + one.word + ', and waits.)' : '(No key in the box. Orv points at the + and waits.)';
 }
+const paidOpen = d => !!(meGet('paid', {}) || {})[d];
+/* the word (Cha-ching) in his words opens the paid doors he holds: Orv's chat door, and the decide slot's door */
+function openPaid() {
+  const paid = meGet('paid', {}) || {}, opened = [];
+  const key = String(readBox().apiKey || '').trim(), d = doorOf(key);
+  if (key && DOORS[d] && !KNOBS.freeDoors.includes(d) && !paid[d]) opened.push(d);
+  const db = readDecide();
+  if (db && db.door && !paid[db.door] && !opened.includes(db.door)) opened.push(db.door);
+  if (!opened.length) return;
+  opened.forEach(x => { paid[x] = isoMs(); });
+  mePut('paid', paid);
+  opened.forEach(x => logIt({ who: 'k', what: 'cha-ching', text: x }));
+}
 
-/* he speaks: his words go on the log FIRST, verbatim; only then is a door knocked on */
-async function meSpeak() {
+/* his unsent words survive a reload, a crash, a phone that puts the tab to sleep: kept under ink.me.draft as he
+   types (a key is never written down here: a box holding a key-shaped word keeps no draft) and given back to the
+   box when the glass opens. Sent, they are in the log; the draft goes empty. */
+let DRAFT = 0;
+function draftKeep() {
+  clearTimeout(DRAFT); DRAFT = 0;
+  const v = $('meWords').value;
+  mePut('draft', !v.trim() || v.split(/\s+/).some(w => keyShaped(w)) ? '' : v.slice(0, 4000));
+}
+const draftSoon = () => { clearTimeout(DRAFT); DRAFT = setTimeout(draftKeep, 400); };
+/* words from outside the box (the "Tell Orv" Shortcut's #say=): they wait while Orv is still reading (never dropped
+   because he was busy), and whatever he had typed in the box comes back after them */
+async function sayFromOutside(words) {
+  if (!ME.on) await meEnter(null);
+  for (let i = 0; ME.busy && i < 600; i++) await new Promise(r => setTimeout(r, 100));
+  const ta = $('meWords'), draft = ta.value;
+  ta.value = String(words).slice(0, 4000);
+  await meSpeak('say');
+  if (draft.trim() && !ta.value.trim()) ta.value = draft;
+  draftKeep();
+}
+
+/* he speaks: his words go on the log FIRST, verbatim; only then is a door knocked on.
+   The modules hear him next ('speak'); one may take the words whole (ev.stop()). With no decide module, the plain
+   look phrases ("darker", "Orv bigger", "put it back") move the glass here, at $0, and no door is knocked on.
+   "many thanks" closes the talk: Orv answers whatever else was said, then the ritual. */
+async function meSpeak(source) {
   if (ME.busy) return;
   const ta = $('meWords'), raw = ta.value;
   if (!raw.trim()) { ta.focus(); return; }
-  if (!logIt({ who: 'k', what: 'say', text: raw })) { meSay('(The glass is full. Your words stay in the box.)', true); return meRender(); }
-  ta.value = '';
-  ME.note = '';
-  const key = String(readBox().apiKey || '').trim(), d = doorOf(key);
-  if (key && DOORS[d] && !KNOBS.freeDoors.includes(d) && raw.indexOf(KNOBS.password) >= 0) {
-    const paid = meGet('paid', {}) || {};
-    if (!paid[d]) { paid[d] = isoMs(); mePut('paid', paid); logIt({ who: 'k', what: 'cha-ching', text: d }); }
-  }
-  if (!key || !DOORS[d]) { meSay(meStage(key), true); return meRender(); }
-  if (!KNOBS.freeDoors.includes(d) && !(meGet('paid', {}) || {})[d]) {
-    meSay('(The ' + d + ' door costs coin. Orv holds out his gear hand and waits for the word ' + KNOBS.password + '.)', true);
+  if (keyShaped(raw.trim())) {                                    // a key pasted into the talk: it goes to its box, never into the log
+    ta.value = '';
+    const r = setKey(raw.trim());
+    meSay(r.ok ? keySaid(r) : '(Orv squints at the key: ' + r.why + '.)', true, { thread: false });
     return meRender();
+  }
+  if (!logIt({ who: 'k', what: 'say', text: raw })) { meSay('(The glass is full. Your words stay in the box.)', true, { thread: false }); return meRender(); }
+  ta.value = ''; draftKeep();
+  ME.stick = true;                                                // he spoke: the talk goes back to its foot
+  ME.note = '';
+  const system = orvSystem(ME.st);                                // the talk as it stood before these words; they go as his turn
+  talkPush('k', raw);
+  if (raw.indexOf(KNOBS.password) >= 0) openPaid();
+  const thanks = KNOBS.me.thanks.test(raw);
+  const rest = raw.replace(new RegExp(KNOBS.me.thanks.source, 'ig'), ' ').replace(new RegExp(KNOBS.password, 'g'), ' ');
+  const ev = { text: raw, source: typeof source === 'string' ? source : 'box', thanks, stopped: false, stop() { ev.stopped = true; } };
+  emit('speak', ev);
+  if (!ev.stopped && !thanks && await plainModel(raw)) ev.stopped = true;
+  if (!ev.stopped && !ORVAPP.decide && !thanks && plainLook(raw, 'k')) ev.stopped = true;
+  if (ev.stopped) return thanks ? manyThanks(raw) : meRender();
+  if (thanks && !/[\p{L}\p{N}]{2,}/u.test(rest)) return manyThanks(raw);   // only the thanks: no door is knocked on
+  const key = String(readBox().apiKey || '').trim(), d = doorOf(key);
+  if (!key || !DOORS[d]) { meSay(meStage(key), true); return thanks ? manyThanks(raw) : meRender(); }
+  if (!KNOBS.freeDoors.includes(d) && !paidOpen(d)) {
+    meSay('(The ' + d + ' door costs coin. Orv holds out his gear hand and waits for the word ' + KNOBS.password + '.)', true);
+    return thanks ? manyThanks(raw) : meRender();
   }
   ME.busy = true; meRender();
   let model = '';
   try {
     model = await mePick(d, key);
-    meTake(d, model, String(await meCall(d, key, model, orvSystem(ME.st), raw)));
+    meTake(d, model, String(await meCall(d, key, model, system, raw)));
   } catch (e) {
     const why = String((e && e.message) || e);
     logIt({ who: 'ai:' + d + ':' + (model || '?'), what: 'error', text: clip(why, 300) });
     meSay('(The ' + d + ' door did not answer: ' + clip(why, 160) + ')', true);
-  } finally { ME.busy = false; meRender(); }
+    emit('reply', { say: '', applied: [], held: [], dropped: [], door: d, model, error: clip(why, 300) });
+  } finally { ME.busy = false; if (thanks) manyThanks(raw); else meRender(); }
+}
+/* the kingdom as it will stand once the held ops land (advice and answer modes hold them until "many thanks") */
+function heldState() {
+  const st = copyOf(ME.st), held = meGet('held', []);
+  (Array.isArray(held) ? held : []).forEach(h => runOps(st, h && h.ops));
+  return st;
 }
 function meTake(d, model, reply) {
   const who = 'ai:' + d + ':' + model, o = parseReply(reply);
   if (!o) {
-    const say = sayOf(reply);
+    /* no JSON: a "say" inside is still his to read; plain words with no braces at all (a door that forgot the
+       shape) are Orv's words as they came. Nothing is applied either way. */
+    const plain = String(reply || '').trim(), say = sayOf(reply) || (plain && !/[{}`]/.test(plain) ? clip(plain, KNOBS.me.sayMax) : '');
     logIt({ who, what: 'unparsed', text: clip(reply, KNOBS.me.rawMax) });
     ME.note = 'nothing changed';
-    return meSay(say || '(Orv mutters something the glass cannot read. Nothing changed.)', !say);
+    meSay(say || '(Orv mutters something the glass cannot read. Nothing changed.)', !say);
+    emit('reply', { say, applied: [], held: [], dropped: [], door: d, model, unparsed: true });
+    return;
   }
   const say = typeof o.say === 'string' ? clip(o.say.trim(), KNOBS.me.sayMax) : '';
-  const st = JSON.parse(JSON.stringify(ME.st));
+  const action = settings().mode === 'action';
+  const st = action ? copyOf(ME.st) : heldState();
   const { applied, dropped } = o.ops === undefined ? { applied: [], dropped: [] } : runOps(st, o.ops);
-  if (applied.length && mePut('state', st)) ME.st = st;
-  logIt({ who, what: 'reply', text: say, ops: applied });
+  let held = [];
+  if (action) { if (applied.length && mePut('state', st)) ME.st = st; }
+  else if (applied.length) {
+    const h = meGet('held', []), list = Array.isArray(h) ? h : [];
+    list.push({ who, at: isoMs(), ops: applied });
+    if (mePut('held', list)) held = applied;
+  }
+  logIt(action ? { who, what: 'reply', text: say, ops: applied } : { who, what: 'reply', text: say, ops: [], held });
   dropped.forEach(x => logIt({ who, what: 'dropped', text: 'op ' + (x.i + 1) + ': ' + x.reason, raw: rawOf(x.op) }));
-  ME.note = applied.length || dropped.length ? applied.length + ' done' + (dropped.length ? ' · ' + dropped.length + ' dropped' : '') : '';
+  const n = action ? applied.length : held.length;
+  ME.note = n || dropped.length ? n + (action ? ' done' : ' held for many thanks') + (dropped.length ? ' · ' + dropped.length + ' dropped' : '') : '';
   meSay(say || '(Orv nods.)', !say);
+  emit('reply', { say, applied: action ? applied : [], held, dropped, door: d, model });
+}
+/* "many thanks": the held ops land (through the same checks), the modules hear it (the ritual: the glass dissolves
+   in colour), the talk folds away. Nothing is lost: the log holds every word and every op. */
+function manyThanks(raw) {
+  const talk = ME.talk.slice(), held = meGet('held', []);
+  let applied = [];
+  if (Array.isArray(held) && held.length) {
+    const st = copyOf(ME.st), logs = [];
+    held.forEach(h => {
+      const r = runOps(st, h && h.ops), who = h && typeof h.who === 'string' ? h.who : 'ai:?';
+      applied = applied.concat(r.applied);
+      logs.push({ who, what: 'applied', ops: r.applied });
+      r.dropped.forEach(x => logs.push({ who, what: 'dropped', text: 'held op ' + (x.i + 1) + ': ' + x.reason, raw: rawOf(x.op) }));
+    });
+    if (mePut('state', st)) { ME.st = st; mePut('held', []); logs.forEach(logIt); }
+    else applied = [];
+  }
+  logIt({ who: 'k', what: 'many-thanks', text: applied.length ? applied.length + ' held ops applied' : '' });
+  emit('many-thanks', { text: raw, applied, talk });
+  ME.talk = []; mePut('talk', []); ME.group = null;
+  meSay(KNOBS.me.bow, true, { thread: false });
+  ME.note = applied.length ? applied.length + ' done' : '';
+  meRender();
 }
 
 /* his hand: the same checks, logged who:'k' */
 function handOp(op, what) {
   const why = checkOp(ME.st, op);
   if (why) { meNote(why); return false; }
-  const st = JSON.parse(JSON.stringify(ME.st)), o = normOp(op);
+  const st = copyOf(ME.st), o = normOp(op, st);
   applyOp(st, o, isoMs());
   if (!mePut('state', st)) { meNote(ME.note); return false; }
   ME.st = st;
@@ -1399,6 +1750,8 @@ function unfold(t, lineShown) {
   if (!lineShown) u.appendChild(mk('p', 'full', t.text));
   if (before) u.appendChild(mk('p', 'line', 'after ' + before));
   if (then) u.appendChild(mk('p', 'line', 'then ' + then));
+  const g = t.group && groupById(ME.st, t.group);
+  if (g) u.appendChild(mk('p', 'line', 'in ' + g.word));
   u.appendChild(mk('p', 'line', 'made ' + when(t.at) + (t.done && t.doneAt ? ' · done ' + when(t.doneAt) : '')));
   u.addEventListener('click', () => meTap(t.id));
   return u;
@@ -1620,7 +1973,7 @@ function meWords(ol, list, cls) {
 function fitGuard() {
   const g = $('guard'); if (g.hidden) return;
   g.style.whiteSpace = 'nowrap';
-  for (const px of KNOBS.me.guardPx) { g.style.fontSize = px + 'px'; if (g.scrollWidth <= g.clientWidth) break; }
+  for (const px of KNOBS.me.knobs.guard[lookIdx('words')] || KNOBS.me.guardPx) { g.style.fontSize = px + 'px'; if (g.scrollWidth <= g.clientWidth) break; }
   if (g.scrollWidth > g.clientWidth) g.style.whiteSpace = 'normal';
 }
 function renderSword() {
@@ -1649,8 +2002,9 @@ function renderSword() {
 }
 const SVGNS = 'http://www.w3.org/2000/svg';
 function drawMeSky(order, one) {
-  const svg = $('meSky'), K = INK.KNOBS.sky, keep = Object.assign({}, K), look = KNOBS.me.look;
+  const svg = $('meSky'), K = INK.KNOBS.sky, keep = Object.assign({}, K), look = KNOBS.me.look, f = KNOBS.me.knobs.sky.steps[lookIdx('sky')] || 1;
   Object.assign(K, KNOBS.me.sky);                                // the same renderer (§2), sized for half a phone
+  K.dx = Math.round(K.dx * f); K.dy = Math.round(K.dy * f);      // the look's spacing (whole units: the layout stays deterministic)
   try {
     const ids = new Set(order.map(t => t.id));
     const tasks = order.map(t => ({ id: t.id, word: t.word, text: t.text, after: t.after.filter(a => ids.has(a)), done: t.done, who: 'k' }));
@@ -1661,30 +2015,521 @@ function drawMeSky(order, one) {
       else if ((c.getAttribute('fill') || '').toLowerCase() === gold) c.setAttribute('fill', look.ink);   // his ink: the gold is the crossguard's alone
     });
     svg.querySelectorAll('title').forEach(n => n.remove());       // no floating notes: the word opens in the sword
-    const s = one && INK.layout(tasks).stars.find(x => x.id === one.id), g = s && svg.querySelector('[data-id="' + one.id + '"]');
+    const L = INK.layout(tasks), s = one && L.stars.find(x => x.id === one.id), g = s && svg.querySelector('[data-id="' + one.id + '"]');
     if (g) {
       const ring = document.createElementNS(SVGNS, 'circle');
       [['cx', s.x], ['cy', s.y], ['r', K.ring], ['fill', 'none'], ['stroke', look.ink], ['stroke-width', 1], ['vector-effect', 'non-scaling-stroke']]
         .forEach(([k, v]) => ring.setAttribute(k, String(v)));
       g.appendChild(ring);
     }
+    /* a group tapped: its stars light (their words in ink, bold), the rest go to the dim grey (never faded by alpha),
+       and one thread runs through the group's stars in story order, so what belongs together reads together */
+    const grp = ME.group && groupById(ME.st, ME.group);
+    if (grp) {
+      const inG = new Set(order.filter(t => t.group === grp.id).map(t => t.id));
+      svg.querySelectorAll('g[data-id]').forEach(n => n.classList.add(inG.has(n.getAttribute('data-id')) ? 'lit' : 'off'));
+      const pts = L.stars.filter(x => inG.has(x.id));
+      if (pts.length > 1) {
+        const pl = document.createElementNS(SVGNS, 'polyline');
+        [['points', pts.map(p => p.x + ',' + p.y).join(' ')], ['fill', 'none'], ['stroke', look.ink], ['stroke-width', 1.5],
+         ['vector-effect', 'non-scaling-stroke'], ['class', 'thread'], ['pointer-events', 'none']].forEach(([k, v]) => pl.setAttribute(k, String(v)));
+        svg.insertBefore(pl, svg.querySelector('g[data-id]'));
+      }
+    }
   } finally { Object.assign(K, keep); }
 }
+/* the groups of the kingdom as words above the stars (the state of the kingdom); a tap lights one (a module, the
+   hex constellation, may claim the sky and draw them its own way) */
+function renderGroups() {
+  const box = $('meGroups'); box.textContent = '';
+  const claimed = !!ME.claimed.sky;
+  box.hidden = claimed; $('meSky').toggleAttribute('hidden', claimed); $('meCount').hidden = claimed;
+  if (claimed) return;
+  const order = storyOrder(ME.st);
+  groupsOf(ME.st).forEach(g => {
+    const mine = order.filter(t => t.group === g.id), done = mine.filter(t => t.done).length;
+    const b = mk('button', '', g.word); b.type = 'button'; b.dataset.group = g.id;
+    b.setAttribute('aria-pressed', String(ME.group === g.id));
+    b.setAttribute('aria-label', g.word + (g.text ? ' — ' + g.text : '') + ', ' + done + ' of ' + mine.length + ' done');
+    b.addEventListener('click', () => tapGroup(g.id));
+    box.appendChild(b);
+  });
+}
+function sayShown() { return !ME.say ? '' : ME.say.shown == null ? ME.say.text : Array.from(ME.say.text).slice(0, ME.say.shown).join(''); }
+function renderMeTalk() {
+  const ol = $('meTalk'); ol.textContent = '';
+  const list = ME.talk.slice(), last = list[list.length - 1];
+  if (last && last.who === 'orv' && ME.say && last.text === ME.say.text) list.pop();     // Orv's last words sit below, in #meSay
+  list.forEach(l => { const li = mk('li', l.who === 'k' ? 'k' : l.stage ? 'orv stage' : 'orv', l.text); ol.appendChild(li); });
+  const say = $('meSay'); say.textContent = sayShown(); say.classList.toggle('stage', !!(ME.say && ME.say.stage));
+  const th = $('meThread'); if (ME.stick !== false) th.scrollTop = th.scrollHeight;
+}
+/* THE THREAD AT REST: Orv's last words always in sight, and only whole lines. The talk stays pinned to its foot
+   (unless his hand has scrolled back up it: then it holds where he left it). At rest its top edge falls between two
+   lines: a line cut in half under THE LUCKY reads as words on words, so the thread gives up the sliver of the cut
+   line at its top. Run after every draw (the modules' words in the corner change its room), on a resize, and as
+   Orv's words are typed out. */
+function pinThread() {
+  const th = $('meThread');
+  if (!ME.on || !th || ME.stick === false || !th.isConnected) return;
+  th.style.marginTop = '';
+  th.scrollTop = th.scrollHeight;
+  if (th.scrollTop <= 0) return;                                  // it all fits: nothing is cut
+  const top = th.getBoundingClientRect().top, rects = [];
+  th.querySelectorAll('#meTalk li, #meSay, #slotChat p, #slotChat button').forEach(el => {
+    const rg = document.createRange(); rg.selectNodeContents(el);
+    for (const r of rg.getClientRects()) if (r.height > 1) rects.push(r);
+  });
+  /* a line is cut when it starts above the edge and reaches (or its pixels may reach: a pixel face's metrics lie)
+     down to it; the edge then moves to just above the first whole line under it */
+  const cutLine = rects.some(r => r.top < top - 0.5 && r.bottom > top - 3);
+  if (!cutLine) return;
+  const next = rects.filter(r => r.top >= top - 0.5).reduce((m, r) => Math.min(m, r.top), Infinity);
+  const cut = Number.isFinite(next) ? next - top - 1 : 0;
+  if (cut > 0.5 && cut < th.clientHeight / 2) { th.style.marginTop = Math.ceil(cut) + 'px'; th.scrollTop = th.scrollHeight; }
+}
+let PIN = 0;
+const pinSoon = () => { if (!PIN) PIN = requestAnimationFrame(() => { PIN = 0; pinThread(); }); };
+let RENDERING = false;
 function meRender() {
-  const st = ME.st, one = theOne(st), order = storyOrder(st), done = order.filter(t => t.done);
-  $('meName').textContent = KNOBS.me.title;
-  $('meCount').textContent = order.length ? done.length + ' of ' + order.length + ' done' : '';
-  $('meEmpty').hidden = !isEmpty(st);                            // opened empty: say where the kingdom lives
-  $('meNudge').hidden = isEmpty(st) || meGet('kept', '') === today();   // the one dim word, only when a keep is due
-  renderSword();
-  drawMeSky(order, one);
-  const say = $('meSay'); say.textContent = ME.say ? ME.say.text : ''; say.classList.toggle('stage', !!(ME.say && ME.say.stage));
-  const key = String(readBox().apiKey || '').trim(), usable = !!key && !!DOORS[doorOf(key)];
-  $('meKey').hidden = usable;
-  $('meKeyLine').textContent = key && !usable ? 'No door answers to that key — paste another' : KNOBS.me.keyLine;
-  $('meNote').textContent = ME.busy ? 'orv is reading' : ME.note || '';
+  if (!ME.on || !ME.st) return;
+  if (RENDERING) return;                                          // a module's 'render' handler asking for a render: already drawing
+  RENDERING = true;
+  try {
+    const st = ME.st, one = theOne(st), order = storyOrder(st), done = order.filter(t => t.done);
+    if (ME.group && !groupById(st, ME.group)) ME.group = null;
+    $('meName').textContent = KNOBS.me.title;
+    $('meCount').textContent = order.length ? done.length + ' of ' + order.length + ' done' : '';
+    $('meEmpty').hidden = !isEmpty(st);                            // opened empty: say where the kingdom lives
+    $('meNudge').hidden = isEmpty(st) || meGet('kept', '') === today();   // the one dim word, only when a keep is due
+    /* each part drawn on its own: one that stumbles is warned and the rest of the glass still draws */
+    const part = (name, fn) => { try { fn(); } catch (e) { console.warn('[orv] the ' + name + ' stumbled:', e); } };
+    part('sword', renderSword);
+    part('groups', renderGroups);
+    if (!ME.claimed.sky) part('sky', () => drawMeSky(order, one));
+    part('talk', renderMeTalk);
+    part('key line', () => {
+      const key = String(readBox().apiKey || '').trim(), usable = !!key && !!DOORS[doorOf(key)];
+      $('meKey').hidden = usable;
+      $('meKeyLine').textContent = key && !usable ? 'No door answers to that key — paste another' : KNOBS.me.keyLine;
+    });
+    $('meNote').textContent = ME.busy ? 'orv is reading' : ME.note || '';
+    emit('render', { state: copyOf(st) });
+    pinThread();                                                  // after the modules drew their words into the corner
+  } finally { RENDERING = false; }
 }
 function meNote(t) { ME.note = t; $('meNote').textContent = t; }
+
+/* ═══ THE LOOK — the Jev slot's knobs ("speak and the design changes in front of your eyes"). Every knob is an index
+   into fixed steps (KNOBS.me.knobs), clamped, so whatever chooses (the plain phrases here, a decide module, Jev
+   itself) can only pick from the menu the code holds out: greys only, Orv at an integer scale, Dogica in eights.
+   Kept under ink.me.look (so "keep" backs it up); every change is a log line {what:'look', ops:[{op:'look', knob,
+   from, to}]}; "put it back" walks back through ink.me.look.back. applyLook() is the one function that sets it. ═══ */
+const LOOKS = ['words', 'ground', 'orv', 'sky'];
+function readLook() {
+  if (!ME.look) { const v = meGet('look', null); ME.look = v && typeof v === 'object' && !Array.isArray(v) ? v : {}; }
+  return ME.look;
+}
+function lookIdx(knob) {
+  const K = KNOBS.me.knobs[knob], v = readLook()[knob];
+  return Number.isInteger(v) && v >= 0 && v < K.steps.length ? v : K.dflt;
+}
+const groundNow = () => (ME.on ? KNOBS.me.knobs.ground.steps[lookIdx('ground')] : KNOBS.ground);
+function applyLook() {
+  const K = KNOBS.me.knobs, root = document.documentElement.style, w = lookIdx('words');
+  root.setProperty('--blade', K.blade[w] + 'px'); root.setProperty('--handle', K.handle[w] + 'px');
+  if (ME.on) {
+    root.setProperty('--ground', groundNow());
+    const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.setAttribute('content', groundNow());
+  }
+  seamWords();                                                    // his name's letters, lifted again to read on this ground
+  ORV.repaint();
+  if (ME.on && ME.st) { meRender(); fitGuard(); }
+}
+/* changes = {words|ground|orv|sky: +n | -n | 'reset', width: +n | -n | 'reset'}; opts = {who, text}. Returns {changed}. */
+function setLook(changes, opts) {
+  opts = opts || {};
+  const changed = [];
+  if (!changes || typeof changes !== 'object' || !ME.on) return { changed };
+  const K = KNOBS.me.knobs, now = readLook(), next = Object.assign({}, now), L = meGet('layout', null) || {};
+  const before = { words: lookIdx('words'), ground: lookIdx('ground'), orv: lookIdx('orv'), sky: lookIdx('sky'), v: Number.isFinite(L.v) ? L.v : null };
+  LOOKS.forEach(knob => {
+    if (!(knob in changes)) return;
+    const v = changes[knob], from = lookIdx(knob), n = K[knob].steps.length;
+    const to = v === 'reset' || v === null ? K[knob].dflt : Number.isInteger(v) ? Math.max(0, Math.min(n - 1, from + v)) : from;
+    if (to !== from) { next[knob] = to; changed.push({ knob, from, to }); }
+  });
+  let v = null;
+  if ('width' in changes && (changes.width === 'reset' || changes.width === null || Number.isInteger(changes.width))) {
+    const B = seamBounds(), cur = Math.round($('sword').getBoundingClientRect().width);
+    if (B.W) {
+      if (changes.width === 'reset' || changes.width === null) { if (before.v != null) { v = 'reset'; changed.push({ knob: 'width', from: cur, to: 'default' }); } }
+      else if (changes.width) {
+        const to = clampTo(cur + changes.width * K.width * B.W, B.v);
+        if (to !== cur) { v = to; changed.push({ knob: 'width', from: cur, to }); }
+      }
+    }
+  }
+  if (!changed.length) return { changed };
+  next.back = (Array.isArray(now.back) ? now.back : []).concat([before]).slice(-K.back);
+  if (!mePut('look', next)) return { changed: [] };
+  ME.look = next;
+  if (v === 'reset') { seamKeep('v', null); seamsApply(); } else if (v != null) { seamSet('v', v); seamKeep('v', v); }
+  logIt({ who: whoOk(opts.who || 'k'), what: 'look', ops: changed.map(c => ({ op: 'look', knob: c.knob, from: c.from, to: c.to })),
+          text: typeof opts.text === 'string' ? opts.text : undefined });
+  applyLook();
+  emit('look', { changed: copyOf(changed), who: whoOk(opts.who || 'k') });
+  return { changed };
+}
+function undoLook(opts) {
+  opts = opts || {};
+  const now = readLook(), back = Array.isArray(now.back) ? now.back.slice() : [];
+  const prev = back.pop();
+  if (!prev || !ME.on) return { changed: [] };
+  const next = { back }, changed = [];
+  LOOKS.forEach(k => { if (Number.isInteger(prev[k])) next[k] = prev[k]; if (lookIdx(k) !== (Number.isInteger(prev[k]) ? prev[k] : KNOBS.me.knobs[k].dflt)) changed.push({ knob: k, from: lookIdx(k), to: next[k] }); });
+  const L = meGet('layout', null) || {}, wasV = Number.isFinite(L.v) ? L.v : null;
+  if (wasV !== prev.v) changed.push({ knob: 'width', from: wasV == null ? 'default' : wasV, to: prev.v == null ? 'default' : prev.v });
+  if (!mePut('look', next)) return { changed: [] };
+  ME.look = next;
+  if (prev.v == null) { seamKeep('v', null); seamsApply(); } else { seamSet('v', prev.v); seamKeep('v', prev.v); }
+  logIt({ who: whoOk(opts.who || 'k'), what: 'look', ops: changed.map(c => ({ op: 'look', knob: c.knob, from: c.from, to: c.to })), text: 'put back' });
+  applyLook();
+  emit('look', { changed: copyOf(changed), who: whoOk(opts.who || 'k'), undo: true });
+  return { changed };
+}
+/* what moved, in one templated stage line (no model writes it) */
+function lookLine(changed) {
+  const say = {
+    words: d => d > 0 ? 'The words grow.' : 'The words shrink.', ground: d => d > 0 ? 'The ground lightens.' : 'The ground darkens.',
+    orv: d => d > 0 ? 'Orv grows a size.' : 'Orv shrinks a size.', sky: d => d > 0 ? 'The stars draw apart.' : 'The stars draw together.',
+    width: d => d > 0 ? 'The sword widens.' : 'The sword narrows.'
+  };
+  const bits = changed.map(c => (typeof c.to !== 'number' || typeof c.from !== 'number') ? 'The ' + (c.knob === 'width' ? 'sword' : c.knob) + ' goes back.' : say[c.knob](c.to - c.from));
+  return bits.length ? '(Orv’s eye narrows. ' + bits.join(' ') + ')' : '(Orv looks. Nothing there to move.)';
+}
+/* THE PLAIN PHRASES (the rules door: $0, offline, instant). Only a short phrase made wholly of the look's own
+   words moves anything ("darker", "orv bigger", "make the sword a bit bigger and the ground darker", "put it back",
+   "story meter to focus", "action mode"); anything else goes to Orv. A decide module (ORVAPP.decide) takes this
+   over. Returns true when the words were a look phrase (the glass moved, or said why not). */
+const LOOK_NOUN = { words: 'words', word: 'words', text: 'words', letters: 'words', sword: 'sword', blade: 'sword',
+  ground: 'ground', background: 'ground', screen: 'ground', grey: 'ground', gray: 'ground', orv: 'orv', him: 'orv',
+  stars: 'sky', star: 'sky', sky: 'sky', constellation: 'sky' };
+const LOOK_DIR = { bigger: 1, larger: 1, grow: 1, smaller: -1, tinier: -1, shrink: -1, darker: -1, lighter: 1, brighter: 1,
+  wider: 2, narrower: -2, thinner: -2, closer: -3, tighter: -3, apart: 3, looser: 3, further: 3, farther: 3, reset: 0, normal: 0, default: 0 };
+const LOOK_FILL = new Set(['make', 'the', 'a', 'bit', 'touch', 'little', 'lot', 'much', 'more', 'way', 'please', 'it', 'its', 'is', 'too',
+  'slightly', 'and', 'to', 'back', 'go', 'set', 'turn', 'get', 'can', 'you', 'orvs', 'size', 'of', 'together']);
+function plainLook(raw, who) {
+  const s = String(raw).toLowerCase().replace(/[’']/g, '').replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+  if (!s) return false;
+  const toks = s.split(' ');
+  if (toks.length > KNOBS.me.sayRules) return false;
+  const done = line => { meSay(line, true); meRender(); return true; };
+  if (/^(undo|undo that|put it back|go back|back)$/.test(s)) { const r = undoLook({ who }); return done(r.changed.length ? '(Orv’s eye narrows. It goes back as it was.)' : '(Nothing to put back.)'); }
+  let m = /^(?:(?:the )?story )?(?:meter )?(?:to |on )?(immersive|immersion|balanced|focus)(?: mode| meter)?$/.exec(s);
+  if (m && (toks.length > 1 || m[1] === 'immersive' || m[1] === 'immersion')) {
+    const v = m[1] === 'immersion' ? 'immersive' : m[1];
+    setSetting('meter', v, { who }); return done('(The story meter turns to ' + v + '.)');
+  }
+  m = /^(advice|answer|action) mode$/.exec(s);
+  if (m) { setSetting('mode', m[1], { who }); return done('(Orv will ' + { advice: 'advise; your words wait for many thanks', answer: 'answer; your words wait for many thanks', action: 'act on your words at once' }[m[1]] + '.)'); }
+  /* look clauses: each names a knob (or leans on the default one) and a way to move it */
+  const changes = {}, clauses = s.split(/ and | then /);
+  for (const c of clauses) {
+    const w = c.split(' ').filter(Boolean);
+    let noun = null, dir = null, steps = 1;
+    for (const t of w) {
+      if (LOOK_NOUN[t]) noun = noun || LOOK_NOUN[t];
+      else if (t in LOOK_DIR) dir = dir == null ? t : dir;
+      else if (!LOOK_FILL.has(t)) return false;                    // a word the look does not know: this is talk, for Orv
+    }
+    if (dir == null) return false;
+    if (/\b(a lot|way|much)\b/.test(c)) steps = 2;
+    const d = LOOK_DIR[dir], reset = d === 0;
+    let knob;
+    if (Math.abs(d) === 2) knob = 'width';
+    else if (Math.abs(d) === 3) knob = 'sky';
+    else if (dir === 'darker' || dir === 'lighter' || dir === 'brighter') knob = 'ground';
+    else if (reset) knob = noun === 'sword' ? 'width' : noun || null;
+    else knob = noun === 'orv' ? 'orv' : noun === 'sky' ? 'sky' : noun === 'ground' ? 'ground' : 'words';
+    if (!knob) return false;
+    changes[knob] = reset ? 'reset' : Math.sign(d) * steps;
+  }
+  const r = setLook(changes, { who, text: raw });
+  return done(lookLine(r.changed));
+}
+/* "use opus" — the door's own list, the first model whose name holds his word (NOTHING BOUND: the door names, he
+   picks). Only a model that answers takes the words; "use that" or a list that will not come goes on to Orv as talk. */
+async function plainModel(raw) {
+  const m = /^\s*(?:use|switch to)\s+([A-Za-z0-9][\w.:-]{2,60})\s*[.!]?\s*$/i.exec(raw);
+  if (!m) return false;
+  const key = String(readBox().apiKey || '').trim(), d = doorOf(key);
+  if (!key || !DOORS[d]) return false;
+  let ids = [];
+  try { ids = await listModels(d, key); } catch (e) { return false; }
+  const want = m[1].toLowerCase(), pick = ids.filter(id => !KNOBS.me.notChat.test(id)).find(id => id.toLowerCase().includes(want));
+  if (!pick) return false;
+  useModel(pick);
+  meSay('(Orv turns to the ' + d + ' door: ' + pick + (KNOBS.freeDoors.includes(d) || paidOpen(d) ? '.)' : '. It costs coin: say ' + KNOBS.password + ' once.)'), true);
+  meRender();
+  return true;
+}
+function useModel(name) {
+  const key = String(readBox().apiKey || '').trim(), d = doorOf(key);
+  if (!DOORS[d] || typeof name !== 'string' || !/^[\w.:/@-]{1,120}$/.test(name)) return false;
+  if (!writeBox(b => { b.models = b.models && typeof b.models === 'object' ? b.models : {}; b.models[d] = name; })) return false;
+  logIt({ who: 'k', what: 'model', text: d + ':' + name });
+  return true;
+}
+
+/* ═══ SETTINGS — ink.me.settings: {mode, meter, typed} and whatever the modules keep (small, never a key) ═══ */
+function settings() {
+  const v = meGet('settings', null), o = Object.assign({}, KNOBS.me.settings, v && typeof v === 'object' && !Array.isArray(v) ? v : {});
+  if (!KNOBS.me.modes.includes(o.mode)) o.mode = KNOBS.me.settings.mode;
+  if (!KNOBS.me.meters.includes(o.meter)) o.meter = KNOBS.me.settings.meter;
+  if (typeof o.typed !== 'boolean') o.typed = KNOBS.me.settings.typed;
+  return copyOf(o);
+}
+function setSetting(k, v, opts) {
+  opts = opts || {};
+  if (typeof k !== 'string' || !/^[a-z][a-zA-Z0-9_.-]{0,39}$/.test(k)) return false;
+  if ((k === 'mode' && !KNOBS.me.modes.includes(v)) || (k === 'meter' && !KNOBS.me.meters.includes(v)) || (k === 'typed' && typeof v !== 'boolean')) return false;
+  let j; try { j = JSON.stringify(v); } catch (e) { return false; }
+  if (j === undefined || j.length > 4000) return false;
+  const cur = meGet('settings', null), s = cur && typeof cur === 'object' && !Array.isArray(cur) ? cur : {};
+  const was = k in s ? s[k] : KNOBS.me.settings[k];
+  if (JSON.stringify(was) === j) return true;
+  s[k] = JSON.parse(j);
+  if (!mePut('settings', s)) return false;
+  if (!opts.quiet) logIt({ who: whoOk(opts.who || 'k'), what: 'setting', text: k + ' → ' + (v !== null && typeof v === 'object' ? '…' : clip(String(v), 40)) });
+  emit('setting', { key: k, value: copyOf(s[k]), was: was === undefined ? null : copyOf(was) });
+  if (ME.on) meRender();
+  return true;
+}
+
+/* ═══ THE DECIDE SLOT (JEV) — Jev cannot speak, it only chooses. Its key never goes in Orv's box: a 'vck_' key
+   (Vercel's AI Gateway) or a 'https://relay#pass' line (his own Worker) is kept in its own entry,
+   'monomyth.focus.decide.v1' = {door, key?, url?, pass?, model?, at} — never in ink.me.*, so "keep" never carries
+   it, and never in a log line (the door's name only). A 'ts_' key cannot be called from a page (TypeSafe refuses
+   browsers): it is refused with the road to take. The paid gate is the same word, Cha-ching. orv-decide.js (when
+   it exists) reads this box, sets ORVAPP.decide, and moves the look through ORVAPP.setLook. ═══ */
+const DECIDE = 'monomyth.focus.decide.v1';
+const RELAY = /^(https:\/\/[^\s#?]+)#([A-Za-z0-9_-]{16,})$/;      // his Worker's address, then '#', then its pass (no '=': a seed link is never a relay)
+function readDecide() { try { const v = JSON.parse(localStorage.getItem(DECIDE) || 'null'); return v && typeof v === 'object' && typeof v.door === 'string' ? v : null; } catch (e) { return null; } }
+/* one token that only a key looks like: a door's stamp and length, a vck_/ts_ key, or a relay line */
+function keyShaped(k) {
+  if (!/^\S{20,}$/.test(k)) return false;
+  return /^(vck_|ts_)/.test(k) || (RELAY.test(k) && !/\.github\.io\//.test(k)) || doorOf(k) !== 'unknown';
+}
+function keySaid(r) {
+  const d = r.door;
+  if (r.slot === 'decide') return '(Orv sets the ' + d + ' key in its own slot, apart from his voice. It cannot talk; it chooses. Say ' + KNOBS.password + ' once and it may move the glass.)';
+  return KNOBS.freeDoors.includes(d) ? '(Orv hears the ' + d + ' door open.)' : '(The ' + d + ' door costs coin. Say ' + KNOBS.password + ' once and Orv will use it.)';
+}
+function setKey(k) {
+  k = String(k == null ? '' : k).trim();
+  if (!k) return { ok: false, why: 'no key' };
+  if (/^ts_/.test(k)) return { ok: false, door: 'typesafe', why: 'a TypeSafe key cannot be called from a page: it needs the relay (Route B in JEV-INSTALL)' };
+  let dec = null;
+  if (/^vck_[\w-]{8,}$/.test(k)) dec = { door: 'vercel', key: k };
+  else { const m = RELAY.exec(k); if (m && !/\.github\.io\//.test(m[1])) dec = { door: 'relay', url: m[1], pass: m[2] }; }
+  if (dec) {
+    const old = readDecide();
+    if (old && old.door === dec.door && typeof old.model === 'string') dec.model = old.model;
+    dec.at = isoMs();
+    try { localStorage.setItem(DECIDE, JSON.stringify(dec)); } catch (e) { return { ok: false, why: 'this phone would not keep the key' }; }
+    logIt({ who: 'k', what: 'key', text: dec.door + ' (decide)' });
+    emit('key', { slot: 'decide', door: dec.door });
+    return { ok: true, slot: 'decide', door: dec.door };
+  }
+  const d = doorOf(k);
+  if (!DOORS[d]) return { ok: false, why: 'no door answers to that stamp' };
+  if (!writeBox(b => { b.apiKey = k; })) return { ok: false, why: 'this phone would not keep the key' };
+  logIt({ who: 'k', what: 'key', text: d });                    // the door's name only; never the key
+  emit('key', { slot: 'chat', door: d });
+  return { ok: true, slot: 'chat', door: d };
+}
+
+/* ═══ THE GROUPS AND THE STARS, tapped ═══ */
+function tapGroup(id) {
+  const g = groupById(ME.st, id); if (!g) return false;
+  ME.group = ME.group === id ? null : id;
+  const mine = storyOrder(ME.st).filter(t => t.group === id);
+  if (ME.group) {
+    const words = mine.map(t => t.word + (t.done ? ' (done)' : ''));
+    meSay('(Orv opens ' + g.word + (g.text ? ': ' + g.text : '') + (words.length ? ' — ' + words.join(' · ') : ' — nothing in it yet') + '.)', true);
+  }
+  meRender();
+  emit('tap-group', { id, on: ME.group === id, group: copyOf(g), tasks: copyOf(mine) });
+  return true;
+}
+function tapStar(id) {
+  const t = live(ME.st).find(x => x.id === id); if (!t) return false;
+  meTap(id, true);
+  emit('tap-star', { id, task: copyOf(t) });
+  return true;
+}
+
+/* ═══ ORVAPP — the one door for modules (orv-*.js). Modules draw into the slots, listen with on(), and change the
+   kingdom only through apply() (the same checks as Orv's ops) or save() (a whole state, cleaned, nothing deleted).
+   Every write is logged with a who: 'k' (his hand), 'ai:<door>:<model>', or 'engine:<name>' (the default). ═══ */
+const HOOKS = Object.create(null);
+let BOOTED = null;
+function hookCall(fn, p, ev) {
+  try { const r = fn(p); if (r && typeof r.then === 'function') r.then(null, e => console.warn('[orv] a module stumbled on ' + ev + ':', e)); }
+  catch (e) { console.warn('[orv] a module stumbled on ' + ev + ':', e); }
+}
+function emit(ev, p) { (HOOKS[ev] || []).slice().forEach(fn => hookCall(fn, p, ev)); }
+function on(ev, fn) {
+  if (typeof ev !== 'string' || typeof fn !== 'function') return () => {};
+  (HOOKS[ev] = HOOKS[ev] || []).push(fn);
+  if (ev === 'boot' && BOOTED) setTimeout(() => hookCall(fn, BOOTED, ev), 0);       // a late module still hears the boot
+  return () => { const l = HOOKS[ev], i = l ? l.indexOf(fn) : -1; if (i >= 0) l.splice(i, 1); };
+}
+const whoOk = w => (typeof w === 'string' && /^(k|ai:[^\s]{1,100}|engine:[\w.-]{1,40})$/.test(w) ? w : 'engine:module');
+function saveState(st, opts) {
+  opts = opts || {};
+  if (!ME.st) return false;
+  const c = cleanState(copyOf(st || {})); if (!c) return false;
+  const old = ME.st, at = new Map(c.tasks.map(t => [t.id, t])), gids = new Set(c.groups.map(g => g.id));
+  for (const t of old.tasks) {                                    // nothing is ever deleted, and a mark stays a mark
+    const n = at.get(t.id);
+    if (!n || (t.deleted && !n.deleted) || (t.archived && !n.archived)) return false;
+  }
+  if (groupsOf(old).some(g => !gids.has(g.id))) return false;
+  c.n = Math.max(c.n, old.n || 0); c.gn = Math.max(c.gn, old.gn || 0);
+  if (!mePut('state', c)) return false;
+  ME.st = c;
+  logIt({ who: whoOk(opts.who), what: typeof opts.what === 'string' && opts.what.trim() ? clip(opts.what.trim(), 40) : 'save',
+          text: opts.text != null ? clip(String(opts.text), 300) : undefined });
+  meRender();
+  return true;
+}
+function applyOps(ops, opts) {
+  opts = opts || {};
+  if (!ME.st) return { applied: [], dropped: [{ i: 0, reason: 'the kingdom is not open' }] };
+  const who = whoOk(opts.who), st = copyOf(ME.st), r = runOps(st, Array.isArray(ops) ? ops : [ops], who === 'k');
+  if (r.applied.length) { if (!mePut('state', st)) return { applied: [], dropped: [{ i: 0, reason: 'this phone would not keep that' }] }; ME.st = st; }
+  if (r.applied.length || r.dropped.length) logIt({ who, what: typeof opts.what === 'string' && opts.what.trim() ? clip(opts.what.trim(), 40) : 'ops', ops: r.applied,
+                                                    text: opts.text != null ? clip(String(opts.text), 300) : undefined });
+  r.dropped.forEach(x => logIt({ who, what: 'dropped', text: 'op ' + (x.i + 1) + ': ' + x.reason, raw: rawOf(x.op) }));
+  meRender();
+  return copyOf(r);
+}
+function logEntry(entry) {
+  if (!entry || typeof entry !== 'object' || typeof entry.what !== 'string' || !entry.what.trim()) return false;
+  const e = {};
+  Object.keys(entry).forEach(k => { if (k !== 'n' && k !== 'at') e[k] = entry[k]; });
+  e.who = whoOk(entry.who); e.what = clip(entry.what.trim(), 40);
+  let j; try { j = JSON.stringify(e); } catch (x) { return false; }
+  return j.length <= 8000 && logIt(JSON.parse(j));
+}
+/* a module's question to the door his key opens: the same box, the same paid gate, logged asked/answered.
+   Never throws: {ok:true, text, door, model} or {ok:false, why, door?}. opts = {json, tokens, model, from} */
+async function askDoor(system, user, opts) {
+  opts = opts || {};
+  const key = String(readBox().apiKey || '').trim(), d = doorOf(key);
+  if (!key || !DOORS[d]) return { ok: false, why: 'no key in the box' };
+  if (!KNOBS.freeDoors.includes(d) && !paidOpen(d)) return { ok: false, door: d, why: 'the ' + d + ' door waits for the word ' + KNOBS.password };
+  const from = 'engine:' + (typeof opts.from === 'string' && /^[\w.-]{1,40}$/.test(opts.from) ? opts.from : 'module');
+  let model = '';
+  try {
+    model = typeof opts.model === 'string' && opts.model ? opts.model : await mePick(d, key);
+    logIt({ who: from, what: 'asked', text: clip(String(user == null ? '' : user), KNOBS.me.askMax), door: d });
+    const text = String(await meCall(d, key, model, String(system || ''), String(user == null ? '' : user), { json: !!opts.json, tokens: opts.tokens }));
+    logIt({ who: 'ai:' + d + ':' + model, what: 'answered', text: clip(text, KNOBS.me.askMax) });
+    return { ok: true, text, door: d, model };
+  } catch (e) {
+    const why = String((e && e.message) || e);
+    logIt({ who: 'ai:' + d + ':' + (model || '?'), what: 'error', text: clip(why, 300) });
+    return { ok: false, door: d, model, why };
+  }
+}
+const SLOTS = { sky: $('slotSky'), corner: $('slotCorner'), chat: $('slotChat'), top: $('slotTop'), overlay: $('slotOverlay') };
+const ORVAPP = {
+  version: 4,
+  slots: SLOTS,
+  modules: [],                                                   // the module files that loaded
+  decide: null,                                                  // orv-decide.js sets its decide(): the plain phrases here then stand aside
+  state: () => copyOf(ME.st || cleanState(meGet('state', null)) || emptyState()),
+  save: (st, opts) => saveState(st, opts),
+  apply: (ops, opts) => applyOps(ops, opts),
+  log: entry => logEntry(entry),
+  render: () => { meRender(); },
+  say: (text, opts) => {
+    opts = opts || {};
+    if (!ME.on || text == null || !String(text).trim()) return false;
+    meSay(String(text), !!opts.stage, { thread: opts.thread, typed: opts.typed });
+    if (opts.log) logIt({ who: whoOk(opts.who), what: 'said', text: clip(String(text), KNOBS.me.sayMax) });
+    meRender();
+    return true;
+  },
+  speak: (text, source) => {                                     // words as if he typed them and tapped Orv (logged as his)
+    if (!ME.on || ME.busy || text == null || !String(text).trim()) return false;
+    $('meWords').value = String(text).slice(0, 4000); meSpeak(typeof source === 'string' ? source : 'module'); return true;
+  },
+  ask: (system, user, opts) => askDoor(system, user, opts),
+  settings: () => settings(),
+  setSetting: (k, v, opts) => setSetting(k, v, opts),
+  on, emit: (ev, p) => { if (typeof ev === 'string') emit(ev, p); },
+  claim: name => { if (!SLOTS[name]) return null; ME.claimed[name] = true; if (ME.on) meRender(); return SLOTS[name]; },
+  release: name => { if (!SLOTS[name]) return; delete ME.claimed[name]; if (ME.on) meRender(); },
+  tapGroup: id => tapGroup(id), tapStar: id => tapStar(id),
+  group: () => ME.group,
+  look: () => { const K = KNOBS.me.knobs, o = {}; LOOKS.forEach(k => { o[k] = lookIdx(k); }); o.steps = copyOf({ words: K.words.steps, ground: K.ground.steps, orv: K.orv.steps, sky: K.sky.steps }); o.dflt = { words: K.words.dflt, ground: K.ground.dflt, orv: K.orv.dflt, sky: K.sky.dflt }; return o; },
+  setLook: (changes, opts) => setLook(changes, opts),
+  undoLook: opts => undoLook(opts),
+  setKey: k => { const r = setKey(k); if (ME.on) meRender(); return r; },
+  decideBox: () => { const v = readDecide(); return v ? Object.assign(copyOf(v), { paid: paidOpen(v.door) }) : null; },
+  door: () => {
+    const key = String(readBox().apiKey || '').trim(), d = doorOf(key), b = readBox(), dec = readDecide();
+    return { door: DOORS[d] ? d : null, model: DOORS[d] ? String(((b.models || {})[d]) || (((b.lists || {})[d]) || {}).pick || '') || null : null,
+             free: KNOBS.freeDoors.includes(d), paid: paidOpen(d), decide: dec ? { door: dec.door, model: dec.model || null, paid: paidOpen(dec.door) } : null };
+  },
+  models: async () => {
+    const key = String(readBox().apiKey || '').trim(), d = doorOf(key);
+    if (!key || !DOORS[d]) return { door: null, ids: [] };
+    try { const ids = (await listModels(d, key)).filter(id => !KNOBS.me.notChat.test(id)); return { door: d, ids, pick: ORVAPP.door().model }; }
+    catch (e) { return { door: d, ids: [], why: String((e && e.message) || e) }; }
+  },
+  useModel: name => { const r = useModel(name); if (ME.on) meRender(); return r; },
+  palette: { wheel: KNOBS.me.wheel.slice(), gold: '#FFA512', ground: () => groundNow(), ink: KNOBS.me.look.ink, dim: KNOBS.me.look.dim, faint: KNOBS.me.look.faint }
+};
+window.ORVAPP = ORVAPP;
+/* the modules: each optional, loaded in this order, each may be missing (the page works without any) */
+function loadModules() {
+  return Promise.all(KNOBS.modules.map(name => new Promise(res => {
+    const s = document.createElement('script');
+    s.src = './' + name; s.async = false;
+    s.onload = () => res(name);
+    s.onerror = () => { s.remove(); res(null); };
+    document.head.appendChild(s);
+  }))).then(list => { ORVAPP.modules = list.filter(Boolean); return ORVAPP.modules; });
+}
+/* A MODULE THAT STUMBLES NEVER BREAKS THE GLASS. Its handlers bound through on() are already caught (hookCall);
+   this catches the rest: a throw while a module file loads, or in a handler it bound to the page itself, or a
+   promise of its own that fails. The error is kept from the console's red (no popup, nothing for him to manage),
+   warned once, and kept as one log line per module; the glass and every other module go on. */
+const STUMBLED = new Set();
+const moduleOf = s => { const m = /(orv-[a-z]+\.js)/.exec(String(s || '')); return m && KNOBS.modules.includes(m[1]) ? m[1] : ''; };
+function stumbled(mod, why) {
+  console.warn('[orv] ' + mod + ' stumbled:', why);
+  if (STUMBLED.has(mod)) return;
+  STUMBLED.add(mod);
+  try { logIt({ who: 'engine:' + mod.replace(/\.js$/, ''), what: 'stumbled', text: clip(String(why || 'an error'), 200) }); } catch (e) { /* the log is shut: the warning stands */ }
+}
+addEventListener('error', e => {
+  const mod = moduleOf(e.filename) || moduleOf(e.error && e.error.stack);
+  if (!mod) return;
+  e.preventDefault();
+  stumbled(mod, e.message || (e.error && e.error.message));
+});
+addEventListener('unhandledrejection', e => {
+  const r = e.reason, mod = moduleOf(r && r.stack);
+  if (!mod) return;
+  e.preventDefault();
+  stumbled(mod, (r && r.message) || r);
+});
 
 /* ═══ THE SEAMS — his name is the border. HIGH KING LEEVZO stands between the sword and the right side,
    THE LUCKY between the sky and Orv's corner. Day One's barrier (_glass.js portalInit): the border follows
@@ -1727,7 +2572,7 @@ function hexOf(h, s, l) {
   return s === 0 ? '#' + x(l) + x(l) + x(l) : '#' + x(f(p, q, h + 1 / 3)) + x(f(p, q, h)) + x(f(p, q, h - 1 / 3));
 }
 function nameInk(k) {
-  const N = KNOBS.me.name, W = KNOBS.me.wheel, hex = W[(k * N.step) % W.length], ground = KNOBS.me.look.ground;
+  const N = KNOBS.me.name, W = KNOBS.me.wheel, hex = W[(k * N.step) % W.length], ground = ME.on ? groundNow() : KNOBS.me.look.ground;
   let [h, s, l] = hslOf(hex), c = hex;
   if (h * 360 >= 15 && h * 360 <= 60 && l < 0.45) { l = 0.45; c = hexOf(h, s, l); }   // never brown
   while (contrastOf(c, ground) < N.floor && l < 0.95) { l = Math.min(0.95, l + 0.01); c = hexOf(h, s, l); }
@@ -1873,6 +2718,7 @@ async function meRestore(file) {
   Object.keys(keys).forEach(k => { if (k.startsWith('ink.me.') && k !== meKey('state')) mePut(k.slice(7), keys[k]); });
   mePut('state', st); ME.st = st;
   logIt({ who: 'k', what: 'restore', text: clip(file.name || 'a file', 80) });
+  meTalkLoad(); ME.group = null; ME.look = null; applyLook(); seamsApply();
   meNote('restored'); meRender();
 }
 /* #seed= plants a prepared kingdom, only into an empty one */
@@ -1883,7 +2729,7 @@ async function meSeed(raw) {
   if (!st) { ME.note = 'that seed link is not whole'; return false; }
   if (!isEmpty(meGet('state', null))) { ME.note = 'a seed only plants an empty kingdom; yours is kept'; return false; }
   if (!mePut('state', st)) return false;
-  logIt({ who: 'k', what: 'seed', text: st.tasks.length + ' tasks' });
+  logIt({ who: 'k', what: 'seed', text: st.tasks.length + ' tasks' + (st.groups.length ? ' · ' + st.groups.length + ' groups' : '') });
   return true;
 }
 
@@ -1895,6 +2741,7 @@ function showMode(personal) {
   const L = personal ? KNOBS.me.look : KNOBS, root = document.documentElement.style;
   root.setProperty('--ground', L.ground); root.setProperty('--ink', L.ink); root.setProperty('--dim', L.dim); root.setProperty('--faint', L.faint);
   const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.setAttribute('content', L.ground);
+  if (personal) { ME.look = null; applyLook(); }                 // his look (the ground, the words, Orv's size) over the defaults
 }
 async function meEnter(seedRaw) {
   if (S.box) { S.box.stop(); S.box = null; }
@@ -1907,15 +2754,27 @@ async function meEnter(seedRaw) {
     if (stored != null) mePut('stash.' + isoMs(), { state: stored, why: 'unreadable' });   // set aside, never lost
     ME.st = emptyState();
   }
-  const log = meGet('log', []);
-  const last = (Array.isArray(log) ? log : []).slice().reverse().find(e => e && typeof e.who === 'string' && e.who.startsWith('ai:') && e.what === 'reply' && e.text);
-  meSay(last ? last.text : KNOBS.me.hello, !last);
+  meTalkLoad();
+  const draft = meGet('draft', '');
+  if (typeof draft === 'string' && draft.trim() && !$('meWords').value.trim()) $('meWords').value = draft;   // what he was typing, back in the box
+  const log = meGet('log', []), lastTalk = ME.talk.slice().reverse().find(l => l.who === 'orv');
+  let last = (Array.isArray(log) ? log : []).slice().reverse().find(e => e && (e.what === 'many-thanks' || (typeof e.who === 'string' && e.who.startsWith('ai:') && e.what === 'reply' && e.text)));
+  if (last && last.what === 'many-thanks') last = null;            // the talk was folded: Orv starts fresh
+  if (lastTalk) meSay(lastTalk.text, lastTalk.stage, { thread: false });
+  else meSay(last ? last.text : KNOBS.me.hello, !last, { thread: false });
+  ME.look = null; applyLook();
   meRender();
   seamsApply();
+}
+function meTalkLoad() {                                          // the talk kept on this glass, checked line by line
+  const v = meGet('talk', []);
+  ME.talk = (Array.isArray(v) ? v : []).filter(l => l && (l.who === 'k' || l.who === 'orv') && typeof l.text === 'string')
+    .map(l => ({ who: l.who, text: l.text, stage: !!l.stage, at: typeof l.at === 'string' ? l.at : '' })).slice(-KNOBS.me.talkMax);
 }
 
 /* ═══ BOOT ═══ */
 async function boot() {
+  const modulesP = loadModules();                                       // the optional orv-*.js, fetched while the glass is built
   const root = document.documentElement.style;                          // KNOBS → CSS, so the numbers live in one place
   root.setProperty('--ground', KNOBS.ground); root.setProperty('--ink', KNOBS.ink); root.setProperty('--dim', KNOBS.dim);
   root.setProperty('--faint', KNOBS.faint); root.setProperty('--gold', INK.hex(INK.KING)); root.setProperty('--pad', KNOBS.pad + 'px');
@@ -1935,9 +2794,28 @@ async function boot() {
   $('name').addEventListener('click', () => { const all = projects(); if (all.length > 1) enter(all[(all.indexOf(P) + 1) % all.length]); });
   $('joinBtn').addEventListener('click', join);
   $('askBtn').addEventListener('click', askOrv);
-  $('orv').addEventListener('click', () => (ME.on ? meSpeak() : askOrv()));
+  $('orv').addEventListener('click', () => {
+    if (ME.orvHeld && Date.now() - ME.orvHeld < 600) { ME.orvHeld = 0; return; }   // a hold that a module took is not a send
+    return ME.on ? meSpeak() : askOrv();
+  });
+  /* HOLD Orv: when a module listens ('hold-orv', the card that turns him into the QR), a still press of holdMs is
+     the hold and the send does not fire. With no listener, a long press is a tap, as it always was. */
+  let orvHold = null;
+  $('orv').addEventListener('pointerdown', e => {
+    if (!ME.on || !(HOOKS['hold-orv'] || []).length) return;
+    const x = e.clientX, y = e.clientY;
+    orvHold = { x, y, t: setTimeout(() => { orvHold = null; ME.orvHeld = Date.now(); emit('hold-orv', { x, y }); }, KNOBS.me.holdMs) };
+  });
+  const orvLetGo = e => { if (!orvHold) return; if (e.type === 'pointermove' && Math.hypot(e.clientX - orvHold.x, e.clientY - orvHold.y) < KNOBS.me.holdSlop) return; clearTimeout(orvHold.t); orvHold = null; };
+  ['pointerup', 'pointercancel', 'pointermove'].forEach(t => $('orv').addEventListener(t, orvLetGo));
   /* personal mode: his hand on the sword, the sky, the shelf */
   $('meWords').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); meSpeak(); } });
+  $('meWords').addEventListener('input', draftSoon);
+  addEventListener('pagehide', () => { if (DRAFT) draftKeep(); });
+  /* the talk: his hand scrolling back up it lets go of the foot; back at the foot, it holds there again. Whatever
+     changes the corner's room (a module's words, the key line, a seam, the glass turning) re-pins it. */
+  $('meThread').addEventListener('scroll', () => { const th = $('meThread'); ME.stick = th.scrollTop + th.clientHeight >= th.scrollHeight - 4; }, { passive: true });
+  try { const ro = new ResizeObserver(pinSoon); ['meCorner', 'slotChat', 'slotCorner', 'meKey', 'meWords', 'meFoot'].forEach(id => ro.observe($(id))); } catch (e) { /* no observer: every draw still pins */ }
   $('guard').addEventListener('click', () => { if ($('guard').dataset.id) meTap($('guard').dataset.id, $('guard')); });
   $('plus').addEventListener('click', () => editBegin(null));
   /* his hand on a word or a star: tap · swipe · hold · drag (one state machine, pointer events) */
@@ -1956,7 +2834,7 @@ async function boot() {
     const g = e.target.closest && e.target.closest('[data-id]');
     e.stopPropagation();
     if (e.type === 'click' && ME.swiped && Date.now() - ME.swiped < 500) { ME.swiped = 0; return; }
-    if (g) { if (e.type === 'keydown') e.preventDefault(); meTap(g.getAttribute('data-id'), true); }
+    if (g) { if (e.type === 'keydown') e.preventDefault(); tapStar(g.getAttribute('data-id')); }
   };
   sky.addEventListener('click', skyTap, true);
   sky.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') skyTap(e); }, true);
@@ -1980,14 +2858,12 @@ async function boot() {
   $('meTop').addEventListener('click', e => { if (ME.swiped && Date.now() - ME.swiped < 500) { e.stopPropagation(); e.preventDefault(); ME.swiped = 0; } }, true);
   $('meNudge').addEventListener('click', meKeep);
   $('meKeySave').addEventListener('click', () => {
-    const k = $('meKeyIn').value.trim(), d = doorOf(k);
+    const k = $('meKeyIn').value.trim();
     if (!k) return $('meKeyIn').focus();
-    if (!DOORS[d]) return meNote('no door answers to that stamp');
-    if (!writeBox(b => { b.apiKey = k; })) return meRender();
+    const r = setKey(k);                                          // the stamp names the door: Orv's chat box, or the decide slot (Jev)
+    if (!r.ok) return meNote(r.why);
     $('meKeyIn').value = '';
-    logIt({ who: 'k', what: 'key', text: d });                   // the door's name only; never the key
-    meSay(KNOBS.freeDoors.includes(d) ? '(Orv hears the ' + d + ' door open.)'
-                                      : '(The ' + d + ' door costs coin. Say ' + KNOBS.password + ' once and Orv will use it.)', true);
+    meSay(keySaid(r), true);
     meRender();
   });
   $('meProjects').addEventListener('click', () => {
@@ -2011,6 +2887,8 @@ async function boot() {
   /* #seed= plants his kingdom (only into an empty one). No invite and no message: HIS KINGDOM (§12). */
   /* #say=<words> comes from the "Tell Orv" Shortcut (Siri, the Lock Screen control, the Action button):
      the words land in his kingdom as if typed, and Orv answers. */
+  if (!/^#(ink|m)=/.test(location.hash)) showMode(true);          // his glass at once (his name, Orv) while the modules arrive
+  await Promise.race([modulesP, new Promise(r => setTimeout(r, KNOBS.modulesWaitMs))]);   // the modules hear the first render
   let got = null, seed = null, said = null;
   if (location.hash.length > 1) {
     const sm = /^#seed=([A-Za-z0-9_-]+)$/.exec(location.hash);
@@ -2021,9 +2899,11 @@ async function boot() {
     history.replaceState(null, '', location.pathname + location.search);
   }
   if (got && got.ink && !adopt(got.ink)) got = null;
-  if (got && got.ink) enter(got.ink.p);
-  else if (got && got.m && projects().length) { enter(projects()[0]); await takeBody(got.m); }
-  else { await meEnter(seed); if (said && said.trim()) { $('meWords').value = said.slice(0, 4000); await meSpeak(); } }
+  const booted = () => { BOOTED = { mode: ME.on ? 'personal' : 'project', modules: ORVAPP.modules.slice() }; emit('boot', BOOTED); };
+  if (got && got.ink) { enter(got.ink.p); booted(); }
+  else if (got && got.m && projects().length) { enter(projects()[0]); await takeBody(got.m); booted(); }
+  else { await meEnter(seed); booted(); if (said && said.trim()) await sayFromOutside(said); }
+  modulesP.then(() => { if (BOOTED) BOOTED.modules = ORVAPP.modules.slice(); });   // a module slower than the wait still hears 'boot' (on() replays it)
   if (!ME.on) track.scrollLeft = track.clientWidth;
   /* the glass already open when the "Tell Orv" Shortcut (or a seed link) arrives: a hash-only change does not
      reload the page, so the words are taken here, the same way as at boot */
@@ -2034,8 +2914,7 @@ async function boot() {
     if (sm) return meEnter(sm[1]);
     let words = null; try { words = decodeURIComponent(sy[1].replace(/\+/g, ' ')); } catch (e) { words = null; }
     if (!words || !words.trim()) return;
-    if (!ME.on) await meEnter(null);
-    $('meWords').value = words.slice(0, 4000); await meSpeak();
+    await sayFromOutside(words);
   });
   setInterval(resendDue, KNOBS.resendCheckMs);
   setInterval(renderRoad, KNOBS.roadMs);
