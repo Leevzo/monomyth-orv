@@ -358,7 +358,7 @@ function system() {
     '\nTHE ONE THING: ' + (one ? one.word + ' [' + one.id + ']' : 'none') + '\nOPEN TASKS, in priority order:\n' + list +
     '\nDone today: ' + live().filter(t => t.done).length + '.' +
     '\n\nAnswer ONLY with one JSON object: {"say": "...", "ops": [...]}' +
-    '\n"say": a short conversational reply in your own voice (two or three sentences at most), to the High King. Run the numbers when they matter (how many, how long, what fits before what).' +
+    '\n"say": a conversational reply in your own voice, to the High King. Usually two or three sentences. When he brings a problem, give him the tactic: the first move and, if it helps, up to five short numbered steps. Run the numbers when they matter (how many, how long, what fits before what).' +
     '\n"ops": changes to the list, only when his words ask for them or plainly imply them. Allowed ops, nothing else:' +
     '\n {"op":"add","word":"<one word>","text":"<one plain line>","at":"<ISO time with offset, optional>"}' +
     '\n {"op":"done","id":"<id>"}  {"op":"undone","id":"<id>"}  {"op":"remove","id":"<id>"}' +
