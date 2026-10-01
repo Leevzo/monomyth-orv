@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#17232e">
+<title>From the Desk</title>
+<link rel="stylesheet" href="./fonts.css">
+<!--
+  desk.html — WHAT IS ON THE KING'S DESKTOP, per project. Scriptorium's QR (or a sent link) opens
+  desk.html#d=<b64url(deflate-raw(utf8(json)))> with
+    { v:1, p:"<project id>", name:"<title>", at:"<ISO time>",
+      plot: { logline:"…", summary:"…", beats:["…", …] },     // the sword of the story, folding open
+      talk: [ { who:"king"|"orv"|<name>, text:"…" }, … ] }    // the conversation, oldest first
+  The newest snapshot of each project is kept under localStorage 'desk.<p>' (a newer "at" replaces an older one).
+  Nothing else is written: never 'ink.me.*', never the key box. Read-only; every word goes in through textContent.
+-->
+<style>
+:root { --ground:#17232e; --page:#1f2e3b; --ink:#e1e8ed; --dim:#8899a6; --faint:#5b6d7c; --line:#2c3d4c; --gold:#FFA512; --pad:18px; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; min-height: 100%; color: var(--ink); font-family: 'W95FA', ui-monospace, monospace;
+  background: repeating-conic-gradient(rgba(128,124,114,.10) 0% 25%, transparent 0% 50%) 0 0/4px 4px, var(--ground); }
+main { max-width: 680px; margin: 0 auto; padding: calc(env(safe-area-inset-top) + 18px) var(--pad) calc(env(safe-area-inset-bottom) + 30px); }
+h1 { font-family: 'Dogica', ui-monospace, monospace; font-weight: normal; font-size: clamp(22px, 7vw, 34px); color: var(--gold); margin: 0 0 8px; line-height: 1.3; word-break: break-word; }
+.when { font-size: 12px; color: var(--faint); margin-bottom: 22px; }
+.rung { display: block; width: 100%; text-align: left; background: none; border: 0; color: inherit; font: inherit; padding: 10px 0; cursor: pointer; }
+.logline { font-size: 21px; line-height: 1.35; }
+.summary { font-size: 17px; line-height: 1.45; color: var(--ink); border-left: 2px solid var(--line); padding-left: 12px; }
+.beats { list-style: none; margin: 6px 0 0; padding: 0 0 0 12px; border-left: 2px solid var(--line); }
+.beats li { font-size: 16px; line-height: 1.45; padding: 6px 0; color: var(--dim); }
+.beats li b { color: var(--faint); font-weight: normal; margin-right: 8px; }
+.cue { font-size: 12px; color: var(--faint); letter-spacing: .06em; }
+h2 { font-size: 13px; letter-spacing: .1em; color: var(--faint); font-weight: normal; margin: 34px 0 10px; }
+.talk p { margin: 0 0 12px; font-size: 16px; line-height: 1.45; white-space: pre-wrap; }
+.talk .k { color: var(--dim); } .talk .o { color: var(--ink); }
+.talk .who { display: block; font-size: 11px; color: var(--faint); letter-spacing: .08em; margin-bottom: 2px; }
+.shelf button { display: block; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line);
+  color: var(--ink); font: inherit; font-size: 18px; padding: 14px 0; cursor: pointer; }
+.shelf small { color: var(--faint); font-size: 12px; margin-left: 8px; }
+.empty { color: var(--dim); font-size: 16px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<main id="main"></main>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = String(text); return e; };
+const okId = p => /^[a-z0-9][a-z0-9-]{0,63}$/.test(String(p || '')) && p !== 'me';
+const str = (v, n) => String(v == null ? '' : v).slice(0, n);
+
+async function unpack(raw) {
+  const b64 = raw.replace(/-/g, '+').replace(/_/g, '/'), bin = atob(b64 + '==='.slice((b64.length + 3) % 4));
+  const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
+  const out = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer();
+  if (out.byteLength > 2e6) throw new Error('too big');
+  return JSON.parse(new TextDecoder().decode(out));
+}
+/* only the shape we know, trimmed; anything else is dropped */
+function clean(o) {
+  if (!o || o.v !== 1 || !okId(o.p)) return null;
+  const plot = o.plot || {};
+  return { v: 1, p: o.p, name: str(o.name || o.p, 200), at: isNaN(new Date(o.at)) ? new Date().toISOString() : new Date(o.at).toISOString(),
+    plot: { logline: str(plot.logline, 1000), summary: str(plot.summary, 6000), beats: (Array.isArray(plot.beats) ? plot.beats : []).slice(0, 300).map(b => str(b, 1000)) },
+    talk: (Array.isArray(o.talk) ? o.talk : []).slice(-400).map(t => ({ who: str(t && t.who, 40), text: str(t && t.text, 8000) })) };
+}
+const load = p => { try { return JSON.parse(localStorage.getItem('desk.' + p) || 'null'); } catch (e) { return null; } };
+const keep = d => { const was = load(d.p); if (was && new Date(was.at) > new Date(d.at)) return was;
+  try { localStorage.setItem('desk.' + d.p, JSON.stringify(d)); } catch (e) {} return d; };
+const all = () => { const o = []; try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (/^desk\.[a-z0-9-]+$/.test(k)) { const d = load(k.slice(5)); if (d) o.push(d); } } } catch (e) {} return o.sort((a, b) => new Date(b.at) - new Date(a.at)); };
+const when = at => { const d = new Date(at); return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); };
+
+function show(d) {
+  const m = $('main'); m.textContent = '';
+  m.append(mk('h1', '', d.name), mk('div', 'when', 'as it stood on the desk · ' + when(d.at)));
+  /* the plot folds: logline at rest → tap → summary → tap → the beats */
+  let depth = 0;
+  const plot = mk('section'), draw = () => {
+    plot.textContent = '';
+    const top = mk('button', 'rung logline', d.plot.logline || d.plot.summary || '(no logline yet)');
+    top.addEventListener('click', () => { depth = depth ? 0 : 1; draw(); }); plot.append(top);
+    if (!depth) { plot.append(mk('div', 'cue', d.plot.summary || d.plot.beats.length ? 'tap to open' : '')); return; }
+    if (d.plot.summary) { const s = mk('button', 'rung summary', d.plot.summary); s.addEventListener('click', () => { depth = depth === 2 ? 1 : 2; draw(); }); plot.append(s); }
+    if ((depth === 2 || !d.plot.summary) && d.plot.beats.length) {
+      const ol = mk('ol', 'beats'); d.plot.beats.forEach((b, i) => { const li = mk('li'); li.append(mk('b', '', i + 1), document.createTextNode(b)); ol.append(li); }); plot.append(ol);
+    } else if (d.plot.beats.length) plot.append(mk('div', 'cue', 'tap the summary for the beats'));
+  };
+  draw(); m.append(plot);
+  if (d.talk.length) {
+    m.append(mk('h2', '', 'THE CONVERSATION'));
+    const t = mk('div', 'talk');
+    d.talk.forEach(x => { const king = /^(k|king|me|leevzo)$/i.test(x.who); const p = mk('p', king ? 'k' : 'o'); p.append(mk('span', 'who', king ? 'THE KING' : (x.who || 'ORV').toUpperCase()), document.createTextNode(x.text)); t.append(p); });
+    m.append(t);
+  }
+  const others = all().filter(x => x.p !== d.p);
+  if (others.length) { m.append(mk('h2', '', 'OTHER PROJECTS FROM THE DESK')); m.append(shelf(others)); }
+}
+function shelf(list) {
+  const s = mk('div', 'shelf');
+  list.forEach(d => { const b = mk('button', '', d.name); b.append(mk('small', '', when(d.at))); b.addEventListener('click', () => { show(d); scrollTo(0, 0); }); s.append(b); });
+  return s;
+}
+async function boot() {
+  const m = /^#d=([A-Za-z0-9_-]+)$/.exec(location.hash);
+  if (m) {
+    history.replaceState(null, '', location.pathname);
+    try { const d = clean(await unpack(m[1])); if (d) return show(keep(d)); } catch (e) {}
+    $('main').append(mk('p', 'empty', 'That link from the desk would not open. Scan it again, or send it fresh from Scriptorium.'));
+  }
+  const list = all();
+  if (list.length === 1) return show(list[0]);
+  const main = $('main'); main.append(mk('h1', '', 'From the Desk'));
+  if (!list.length) return main.append(mk('p', 'empty', 'Nothing from the desk yet. In Scriptorium, tap send on a project and scan its code.'));
+  main.append(shelf(list));
+}
+boot();
+addEventListener('hashchange', () => { $('main').textContent = ''; boot(); });
+</script>
+</body>
+</html>
