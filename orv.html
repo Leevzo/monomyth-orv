@@ -83,6 +83,16 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--in
 #keep { position: absolute; top: calc(env(safe-area-inset-top) + 14px); right: var(--pad); font-size: var(--small);
   color: var(--faint); background: none; border: 0; padding: 6px; font-family: inherit; }
 #flash { position: fixed; inset: 0; pointer-events: none; opacity: 0; }
+/* THE GATE: before there is a key, the whole screen is one line in the middle */
+#gate { position: fixed; inset: 0; z-index: 10; background: var(--ground); display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 0 28px; transition: opacity .4s; }
+#gate.gone { opacity: 0; pointer-events: none; }
+#gateLine { width: min(100%, 420px); font: inherit; font-size: 17px; color: var(--ink); background: transparent; border: 0; border-radius: 0;
+  border-bottom: 1px solid var(--faint); padding: 8px 2px; outline: none; text-align: center; }
+#gateLine::placeholder { color: var(--faint); }
+#gateSay { width: min(100%, 420px); min-height: 3.6em; margin-top: 12px; font-size: var(--small); line-height: 1.4; color: var(--dim); text-align: center; white-space: pre-wrap; }
+#gateSay.bad { color: var(--late); }
+body.gated #app, body.gated #orv, body.gated #keep { visibility: hidden; }
 @media (prefers-reduced-motion: reduce) { .row.sel .word, .line { transform: none; } }
 </style>
 </head>
@@ -100,6 +110,7 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--in
 <button id="keep" aria-label="keep a copy of the list">keep</button>
 <input id="restore" type="file" accept="application/json,.json" hidden>
 <div id="flash"></div>
+<div id="gate" hidden><input id="gateLine" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="key" aria-label="paste your key"><div id="gateSay" aria-live="polite"></div></div>
 <script>
 'use strict';
 /* ═══ KNOBS: every tunable value, for his eye ═══ */
@@ -249,25 +260,27 @@ async function model(d, key) {
   const pick = (prefer.map(re => ids.find(id => re.test(id))).find(Boolean)) || ids[0];
   kept[d] = pick; store('orv.model', kept); return pick;
 }
+function doorError(r, o) { const e = o && o.error, msg = typeof e === 'string' ? e : (e && e.message) || (o && o.message) || 'status ' + r.status;
+  const x = new Error(msg); x.status = r.status; return x; }
 async function call(d, key, m, system, turns) {
   if (d === 'anthropic') {
     const body = { model: m, max_tokens: 4096, system, messages: turns, output_config: { effort: 'low' } };
     let r = await fetchT(DOORS.anthropic.chat, { method: 'POST', headers: headers(d, key), body: JSON.stringify(body) });
     if (r.status === 400) { delete body.output_config; r = await fetchT(DOORS.anthropic.chat, { method: 'POST', headers: headers(d, key), body: JSON.stringify(body) }); }
-    const o = await r.json(); if (!r.ok) throw new Error((o.error && o.error.message) || 'status ' + r.status);
+    const o = await r.json().catch(() => ({})); if (!r.ok) throw doorError(r, o);
     return (o.content || []).filter(c => c.type === 'text').map(c => c.text).join('');
   }
   if (d === 'gemini') {
     const r = await fetchT(DOORS.gemini.chat + encodeURIComponent(m) + ':generateContent', { method: 'POST', headers: headers(d, key),
       body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: turns.map(t => ({ role: t.role === 'assistant' ? 'model' : 'user', parts: [{ text: t.content }] })),
         generationConfig: { responseMimeType: 'application/json' } }) });
-    const o = await r.json(); if (!r.ok) throw new Error((o.error && o.error.message) || 'status ' + r.status);
+    const o = await r.json().catch(() => ({})); if (!r.ok) throw doorError(r, o);
     return ((((o.candidates || [])[0] || {}).content || {}).parts || []).map(p => p.text || '').join('');
   }
   const body = { model: m, messages: [{ role: 'system', content: system }].concat(turns), temperature: 0.6, response_format: { type: 'json_object' } };
   let r = await fetchT(DOORS[d].chat, { method: 'POST', headers: headers(d, key), body: JSON.stringify(body) });
   if (r.status === 400) { delete body.response_format; r = await fetchT(DOORS[d].chat, { method: 'POST', headers: headers(d, key), body: JSON.stringify(body) }); }
-  const o = await r.json(); if (!r.ok) throw new Error((o.error && (o.error.message || o.error)) || 'status ' + r.status);
+  const o = await r.json().catch(() => ({})); if (!r.ok) throw doorError(r, o);
   return ((o.choices || [])[0] || {}).message ? o.choices[0].message.content || '' : '';
 }
 
@@ -357,7 +370,7 @@ async function speak(raw) {
       else typeSay(String(reply.say || '').slice(0, 900) || '(Orv nods.)', !reply.say);
       if (r.done) FIRST = false; }
     store('orv.chat', turns.concat([{ role: 'assistant', content: text }]).slice(-K.memory * 2));
-  } catch (e) { log({ who: 'ai:' + d, what: 'error', text: String(e.message || e) }); say('(The door did not answer: ' + String(e.message || e).slice(0, 140) + '. Your words are kept.)', true); }
+  } catch (e) { log({ who: 'ai:' + d, what: 'error', text: String(e.message || e) }); if (e.status === 401 || e.status === 403) { BUSY = false; ORV.listening = false; return gate('The ' + d + ' door turned the key away: ' + String(e.message || e).slice(0, 140)); } say('(The door did not answer: ' + String(e.message || e).slice(0, 140) + '. Your words are kept.)', true); }
   BUSY = false; ORV.listening = false; render(); drawChat();
 }
 /* "many thanks": Orv sums up the talk in a line or two; the summary stays in the window until he types again */
@@ -459,7 +472,54 @@ function fromHash() { const m = /^#say=(.*)$/s.exec(location.hash); if (!m) retu
   history.replaceState(null, '', location.pathname + location.search); if (w.trim()) speak(w); }
 fromHash(); window.addEventListener('hashchange', fromHash);
 drawChat();
-if (!box().apiKey) typeSay('(Orv climbs out from under the table, one great eye on you.) High King. Paste your key on the line below and tap me.', true);
+/* ═══ THE GATE: one line in the middle. Paste a key; the door is asked for its model list (free, no tokens spent);
+   a good key opens the app, a bad one says why in plain words. A paid door waits here for Cha-ching. ═══ */
+let GATE_KEY = null;
+function gate(why) {
+  GATE_KEY = null; document.body.classList.add('gated'); const g = $('gate'); g.hidden = false; g.classList.remove('gone');
+  const L = $('gateLine'); L.value = ''; L.type = 'password'; L.placeholder = 'key'; gateSay(why || '', !!why); setTimeout(() => L.focus(), 50);
+}
+function gateSay(t, bad) { const s = $('gateSay'); s.textContent = t; s.classList.toggle('bad', !!bad); }
+function ungate(d) {
+  $('gate').classList.add('gone'); document.body.classList.remove('gated'); setTimeout(() => { $('gate').hidden = true; }, 450);
+  typeSay(FIRST && !open().length ? '(Orv rubs his claws together.) The ' + d + ' door is open. Your first Breath, High King. Tell me everything that is alive in you today, every road you are on. I will make the list.'
+                                  : '(Orv blinks.) The ' + d + ' door is open. Talk to me.', true);
+}
+async function gateTry(raw) {
+  const v = String(raw || '').trim(); if (!v) return;
+  if (GATE_KEY && looksLikeKey(v)) GATE_KEY = null;          // another key, pasted instead of the word
+  if (GATE_KEY) {                                              // the key is good; the door is paid; waiting for the word
+    if (v.toLowerCase() !== K.password.toLowerCase()) return gateSay('Type ' + K.password + ' to let me spend on the ' + GATE_KEY.d + ' door.', true);
+    const p = load('orv.paid', {}); p[GATE_KEY.d] = nowIso(); store('orv.paid', p); log({ who: 'k', what: 'cha-ching', door: GATE_KEY.d });
+    return ungate(GATE_KEY.d);
+  }
+  const d = doorOf(v);
+  if (!d || !looksLikeKey(v)) return gateSay('That does not look like a key. Keys start gsk_, sk-ant-, sk-or-, xai-, AIza or sk-.', true);
+  gateSay('asking the ' + d + ' door…'); $('gateLine').disabled = true;
+  try {
+    const r = await fetchT(DOORS[d].list, { headers: headers(d, v) });
+    const o = await r.json().catch(() => ({}));
+    if (!r.ok) throw doorError(r, o);
+  } catch (e) {
+    $('gateLine').disabled = false; $('gateLine').value = ''; $('gateLine').focus();
+    const why = e.name === 'AbortError' ? 'it did not answer in time' : e.status ? String(e.message || e) : 'could not reach it (' + String(e.message || e) + ')';
+    log({ who: 'k', what: 'key refused', door: d, text: why });
+    return gateSay('The ' + d + ' door turned the key away: ' + why.slice(0, 160), true);
+  }
+  $('gateLine').disabled = false;
+  const b = box(); b.apiKey = v; store(BOX, b); log({ who: 'k', what: 'key', door: d });
+  const kept = load('orv.model', {}); if (kept[d]) { delete kept[d]; store('orv.model', kept); }   // a new key chooses fresh from its own list
+  if (!paidOpen(d)) { GATE_KEY = { d }; const L = $('gateLine'); L.value = ''; L.type = 'text'; L.placeholder = K.password; L.focus();
+    return gateSay('Key is good. The ' + d + ' door costs coin. Type ' + K.password + ' to open it.'); }
+  ungate(d);
+}
+$('gateLine').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); gateTry($('gateLine').value); } });
+$('gateLine').addEventListener('input', e => { if (looksLikeKey(e.target.value)) gateTry(e.target.value); });   // a pasted key goes on its own
+
+const HAD = box().apiKey, HAD_D = doorOf(HAD);
+if (!HAD || !HAD_D) gate();
+else if (!paidOpen(HAD_D)) { gate(); GATE_KEY = { d: HAD_D }; $('gateLine').type = 'text'; $('gateLine').placeholder = K.password;
+  gateSay('Your ' + HAD_D + ' key is kept. That door costs coin. Type ' + K.password + ' to open it, or paste another key.'); }
 else if (FIRST && !open().length) typeSay('(Orv rubs his claws together.) Your first Breath, High King. Tell me everything that is alive in you today, every road you are on. I will make the list.', true);
 else if (load('orv.summary', '')) say(load('orv.summary', ''));
 </script>
