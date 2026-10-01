@@ -31,23 +31,31 @@
 <style>
 :root {
   --ground: #454545; --ink: #f2f2f2; --dim: #a9a9a9; --faint: #6e6e6e; --gold: #FFA512; --late: #FF3D12;
-  --pad: 18px; --orv: 123px; --word: 22px; --small: 13px;
+  --pad: 18px; --orv: 123px; --orvh: 156px; --word: 22px; --small: 13px;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); overflow: hidden;
   font-family: 'W95FA', ui-monospace, monospace; -webkit-font-smoothing: none; font-smooth: never; }
-#track { position: fixed; inset: 0; display: flex; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; scrollbar-width: none; }
-#track::-webkit-scrollbar { display: none; }
-.pane { flex: 0 0 100%; width: 100%; height: 100%; scroll-snap-align: start; scroll-snap-stop: always; }
-#app { position: relative; display: flex; flex-direction: column;
+#app { position: fixed; inset: 0; display: flex; flex-direction: column;
   padding: calc(env(safe-area-inset-top) + 14px) var(--pad) calc(env(safe-area-inset-bottom) + 10px) 8px; }
 /* THE ONE THING, upper left */
 #one { padding-left: 4px; min-height: 64px; }
 #oneWord { font-family: 'Dogica', ui-monospace, monospace; font-size: 30px; line-height: 38px; color: var(--gold); word-break: break-word; }
 #oneLine { font-size: var(--small); color: var(--dim); margin-top: 2px; }
 #clock { font-family: 'Dogica', ui-monospace, monospace; font-size: 12px; letter-spacing: .08em; margin-top: 6px; min-height: 16px; }
+/* the middle: the list | the divider (his name) | Orv's side */
+#main { flex: 1 1 auto; min-height: 0; display: flex; margin-top: 14px; }
+#left { width: var(--d, 58%); min-width: 0; display: flex; flex-direction: column; }
 /* the list: numbers on the very left edge, times beside them, the words floating free */
-#list { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; margin-top: 14px; padding-bottom: 8px; touch-action: pan-y; }
+#list { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; padding-bottom: 8px; touch-action: pan-y; }
+#div { flex: 0 0 26px; display: flex; flex-direction: column; align-items: center; justify-content: center; touch-action: none; cursor: col-resize;
+  font-family: 'Dogica', ui-monospace, monospace; font-size: 11px; line-height: 15px; user-select: none; -webkit-user-select: none; }
+#div span { display: block; }
+#right { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; padding-bottom: calc(var(--orvh) + 4px); }
+#talk { flex: 1 1 auto; overflow-y: auto; display: none; padding: 0 2px 8px 6px; }
+#app.open #talk { display: block; }
+#app.action #right > :not(#mode) { display: none; }
+#mode { font-family: 'Dogica', ui-monospace, monospace; font-size: 9px; letter-spacing: .15em; color: var(--faint); padding-left: 6px; min-height: 12px; }
 .row { display: grid; grid-template-columns: 22px 46px 1fr; align-items: baseline; min-height: 40px; padding: 4px 0;
   user-select: none; -webkit-user-select: none; touch-action: pan-y; }
 .num { font-family: 'Dogica', ui-monospace, monospace; font-size: 11px; color: var(--faint); text-align: left; }
@@ -59,19 +67,16 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--in
 .line { display: none; grid-column: 3; font-size: var(--small); color: var(--dim); transform: translateX(28px); margin-top: 2px; }
 .row.done .word { color: var(--faint); text-decoration: line-through; }
 .row.is-one .word { color: var(--gold); }
-#bottom { display: grid; grid-template-columns: 1fr var(--orv); align-items: end; gap: 6px; }
-#say { font-size: 16px; line-height: 1.35; max-height: 32vh; overflow-y: auto; padding: 0 0 8px 4px; white-space: pre-wrap; }
+#bottom { padding-right: calc(var(--orv) + 4px); }
+#say { font-size: 16px; line-height: 1.35; max-height: 40vh; overflow-y: auto; padding: 0 2px 6px 6px; white-space: pre-wrap; }
 #say.stage { color: var(--dim); font-style: italic; }
 #line { width: 100%; font: inherit; font-size: 17px; color: var(--ink); background: transparent; border: 0;
   border-bottom: 1px solid var(--faint); padding: 8px 2px 8px 4px; outline: none; border-radius: 0; }
 #line::placeholder { color: var(--faint); }
-#orv { width: var(--orv); height: 156px; image-rendering: pixelated; cursor: pointer; justify-self: end; }
-#last { font-size: var(--small); color: var(--faint); padding: 0 0 4px 4px; white-space: pre-wrap; }
-#chat { overflow-y: auto; padding: calc(env(safe-area-inset-top) + 14px) var(--pad) calc(env(safe-area-inset-bottom) + 16px); }
-#chat h2 { font-family: 'Dogica', ui-monospace, monospace; font-size: 10px; letter-spacing: .2em; color: var(--faint); font-weight: normal; margin: 0 0 14px; }
-#chat .k { color: var(--dim); font-size: 15px; margin: 14px 0 4px; white-space: pre-wrap; }
-#chat .o { font-size: 16px; line-height: 1.35; margin: 0 0 4px; white-space: pre-wrap; }
-#chat .sum { color: var(--gold); font-size: 14px; margin: 10px 0 18px; }
+#orv { position: fixed; right: calc(var(--pad) - 6px); bottom: calc(env(safe-area-inset-bottom) + 8px); width: var(--orv); height: var(--orvh); image-rendering: pixelated; cursor: pointer; }
+#talk .k { color: var(--dim); font-size: 15px; margin: 14px 0 4px; white-space: pre-wrap; }
+#talk .o { font-size: 16px; line-height: 1.35; margin: 0 0 4px; white-space: pre-wrap; }
+#talk .sum { color: var(--gold); font-size: 14px; margin: 10px 0 18px; }
 #keep { position: absolute; top: calc(env(safe-area-inset-top) + 14px); right: var(--pad); font-size: var(--small);
   color: var(--faint); background: none; border: 0; padding: 6px; font-family: inherit; }
 #flash { position: fixed; inset: 0; pointer-events: none; opacity: 0; }
@@ -79,16 +84,16 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--in
 </style>
 </head>
 <body>
-<div id="track"><div id="app" class="pane">
+<div id="app">
   <div id="one"><div id="oneWord"></div><div id="oneLine"></div><div id="clock"></div></div>
-  <div id="list" aria-label="your list, in order of priority"></div>
-  <div id="bottom">
-    <div><div id="last"></div><div id="say"></div><input id="line" autocomplete="off" autocapitalize="sentences" placeholder="tell orv" aria-label="tell Orv"></div>
-    <canvas id="orv" aria-label="Orv. Tap to send."></canvas>
+  <div id="main">
+    <div id="left"><div id="list" aria-label="your list, in order of priority"></div></div>
+    <div id="div" role="separator" aria-label="drag: far left shows your words, far right is action mode"></div>
+    <div id="right"><div id="talk" aria-label="the whole talk"><div id="chatLog"></div></div><div id="say"></div><div id="mode"></div></div>
   </div>
+  <div id="bottom"><input id="line" autocomplete="off" autocapitalize="sentences" placeholder="tell orv" aria-label="tell Orv"></div>
 </div>
-<div id="chat" class="pane" aria-label="the whole talk with Orv"><h2>THE WHOLE TALK</h2><div id="chatLog"></div></div>
-</div>
+<canvas id="orv" aria-label="Orv. Tap to send."></canvas>
 <button id="keep" aria-label="keep a copy of the list">keep</button>
 <input id="restore" type="file" accept="application/json,.json" hidden>
 <div id="flash"></div>
@@ -202,7 +207,7 @@ setInterval(tick, 1000);
 
 /* ═══ ORV'S WORDS on screen ═══ */
 function say(text, stage) { const s = $('say'); s.textContent = text; s.classList.toggle('stage', !!stage); }
-function lastLine(words) { $('last').textContent = words ? '— ' + words : ''; }
+function lastLine() { /* his lines show only when the divider is dragged far left */ }
 /* the whole talk, on the right pane: every word he said and every answer, from the log, oldest first */
 function drawChat() { const c = $('chatLog'); c.textContent = '';
   load('orv.log', []).forEach(e => { let el = null;
@@ -210,7 +215,7 @@ function drawChat() { const c = $('chatLog'); c.textContent = '';
     else if (e.what === 'answered') { el = document.createElement('div'); el.className = 'o'; el.textContent = e.text; }
     else if (e.what === 'summary') { el = document.createElement('div'); el.className = 'sum'; el.textContent = '✦ ' + e.text; }
     if (el) c.appendChild(el); });
-  const p = $('chat'); p.scrollTop = p.scrollHeight; }
+  const p = $('talk'); p.scrollTop = p.scrollHeight; }
 function flash() { const f = $('flash'); let i = 0; const go = () => { if (i >= K.wheel.length) { f.style.opacity = 0; return; }
   f.style.background = K.wheel[i++]; f.style.opacity = .5; setTimeout(go, 1000 / K.fps); }; if (!matchMedia('(prefers-reduced-motion: reduce)').matches) go(); }
 
@@ -272,7 +277,8 @@ function system() {
     '\n {"op":"edit","id":"<id>","word":"...","text":"...","at":"<ISO or null>"}' +
     '\n {"op":"order","ids":["<id>", "..."]}   (the whole open list, highest priority first)' +
     '\n {"op":"one","id":"<id>"}   (THE ONE THING)' +
-    '\nNew tasks you add go to the end unless you also send an order. Use only ids that exist. Never invent tasks he did not mention.';
+    '\nNew tasks you add go to the end unless you also send an order. Use only ids that exist. Never invent tasks he did not mention.' +
+    (MODE === 'action' ? '\nACTION MODE: do what he asks to the list and say nothing: "say" must be "".' : '');
 }
 
 /* ═══ CHECK EVERY OP, APPLY THE GOOD ONES ═══ */
@@ -325,7 +331,8 @@ async function speak(raw) {
     let reply = null; try { reply = JSON.parse(text); } catch (e) { const j = /\{[\s\S]*\}/.exec(text); if (j) try { reply = JSON.parse(j[0]); } catch (e2) { reply = null; } }
     if (!reply || typeof reply !== 'object') { log({ who: 'ai:' + d + ':' + m, what: 'unparsed', text }); say(String(text).slice(0, 600)); }
     else { const r = apply(reply.ops); log({ who: 'ai:' + d + ':' + m, what: 'answered', text: String(reply.say || ''), ops: reply.ops || [], dropped: r.dropped });
-      say(String(reply.say || '').slice(0, 900) || '(Orv nods.)', !reply.say); }
+      if (MODE === 'action') { say(''); $('mode').textContent = 'ACTION · ' + r.done + ' DONE'; }
+      else say(String(reply.say || '').slice(0, 900) || '(Orv nods.)', !reply.say); }
     store('orv.chat', turns.concat([{ role: 'assistant', content: text }]).slice(-K.memory * 2));
   } catch (e) { log({ who: 'ai:' + d, what: 'error', text: String(e.message || e) }); say('(The door did not answer: ' + String(e.message || e).slice(0, 140) + '. Your words are kept.)', true); }
   BUSY = false; ORV.listening = false; render(); drawChat();
@@ -400,6 +407,27 @@ const ORV = { listening: false };
       paint(ORV.listening ? 2 : f, E); }
     requestAnimationFrame(loop); };
   requestAnimationFrame(loop);
+})();
+
+/* ═══ THE DIVIDER: his name, vertical. It follows the hand 1:1 and holds where let go.
+   All the way left: his own lines appear and scroll. All the way right: action mode, Orv acts and does not answer.
+   Double-tap: back to the middle. ═══ */
+let MODE = 'talk';
+(function divider() {
+  const D = $('div'), A = $('app'), M = $('main'), name = 'HIGH KING LEEVZO';
+  Array.from(name).forEach((ch, i) => { const s = document.createElement('span'); s.textContent = ch === ' ' ? '\u00a0' : ch;
+    s.style.color = ch === ' ' ? 'transparent' : K.wheel[i % K.wheel.length]; D.appendChild(s); });
+  const KD = { dflt: 0.58, left: 0.16, right: 0.86, min: 0.06, max: 0.94 };
+  const setD = (f, keep) => { f = Math.max(KD.min, Math.min(KD.max, f)); A.style.setProperty('--d', (f * 100).toFixed(2) + '%');
+    const was = MODE; MODE = f >= KD.right ? 'action' : 'talk'; A.classList.toggle('open', f <= KD.left); A.classList.toggle('action', MODE === 'action');
+    $('mode').textContent = MODE === 'action' ? 'ACTION' : ''; if (A.classList.contains('open')) drawChat();
+    if (keep) store('orv.d', f); };
+  setD(load('orv.d', KD.dflt), false);
+  let drag = false, x0 = 0, f0 = 0, lastTap = 0;
+  D.addEventListener('pointerdown', e => { drag = true; x0 = e.clientX; const r = M.getBoundingClientRect(); f0 = (D.getBoundingClientRect().left - r.left) / r.width; D.setPointerCapture(e.pointerId); });
+  D.addEventListener('pointermove', e => { if (!drag) return; const r = M.getBoundingClientRect(); setD(f0 + (e.clientX - x0) / r.width, false); });
+  D.addEventListener('pointerup', e => { if (!drag) return; drag = false; const r = M.getBoundingClientRect(), f = f0 + (e.clientX - x0) / r.width;
+    const t = Date.now(); if (Math.abs(e.clientX - x0) < 4 && t - lastTap < 350) { setD(KD.dflt, true); lastTap = 0; return; } lastTap = t; setD(f, true); });
 })();
 
 /* ═══ BOOT: #say= from the Tell Orv Shortcut arrives as if typed ═══ */
