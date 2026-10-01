@@ -48,14 +48,18 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--in
 #left { flex: 0 0 var(--d, 58%); width: var(--d, 58%); min-width: 0; display: flex; flex-direction: column; }
 /* the list: numbers on the very left edge, times beside them, the words floating free */
 #list { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; padding-bottom: 8px; touch-action: pan-y; }
-#div { flex: 0 0 26px; display: flex; flex-direction: column; align-items: center; justify-content: center; touch-action: none; cursor: col-resize;
-  font-family: 'Dogica', ui-monospace, monospace; font-size: 11px; line-height: 15px; user-select: none; -webkit-user-select: none; }
-#div span { display: block; }
+/* the divider is only a symbol: a seven-pointed star, barely there, in the middle of the screen. Drag the star. */
+#div { flex: 0 0 0px; position: relative; touch-action: none; user-select: none; -webkit-user-select: none; }
+#star { position: absolute; left: -26px; top: 50%; width: 52px; height: 52px; margin-top: -26px; cursor: col-resize; touch-action: none; opacity: .16; }
+#star polygon { fill: none; stroke: var(--ink); stroke-width: 1.4; }
+#app.open #star { opacity: .32; }
+#app.action #star { opacity: .5; }
+#app.action #star polygon { stroke: var(--gold); }
 #right { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; padding-bottom: calc(var(--orvh) - 36px); }
 #talk { flex: 1 1 auto; overflow-y: auto; display: none; padding: 0 2px 8px 6px; }
 #app.open #talk { display: block; }
-#app.action #right > :not(#mode) { display: none; }
-#mode { font-family: 'Dogica', ui-monospace, monospace; font-size: 9px; letter-spacing: .15em; color: var(--faint); padding-left: 6px; min-height: 12px; }
+#app.action #right { display: none; }
+#mode { display: none; }
 .row { display: grid; grid-template-columns: 22px 46px 1fr; align-items: baseline; min-height: 40px; padding: 4px 0;
   user-select: none; -webkit-user-select: none; touch-action: pan-y; }
 .num { font-family: 'Dogica', ui-monospace, monospace; font-size: 11px; color: var(--faint); text-align: left; }
@@ -414,9 +418,11 @@ const ORV = { listening: false };
    Double-tap: back to the middle. ═══ */
 let MODE = 'talk';
 (function divider() {
-  const D = $('div'), A = $('app'), M = $('main'), name = 'HIGH KING LEEVZO';
-  Array.from(name).forEach((ch, i) => { const s = document.createElement('span'); s.textContent = ch === ' ' ? '\u00a0' : ch;
-    s.style.color = ch === ' ' ? 'transparent' : K.wheel[i % K.wheel.length]; D.appendChild(s); });
+  const D = $('div'), A = $('app'), M = $('main');
+  // a {7/3} heptagram: seven points, each joined to the third one on
+  const pts = []; for (let i = 0; i < 7; i++) { const a = -Math.PI / 2 + (i * 3 % 7) * 2 * Math.PI / 7; pts.push((26 + 22 * Math.cos(a)).toFixed(2) + ',' + (26 + 22 * Math.sin(a)).toFixed(2)); }
+  D.innerHTML = '<svg id="star" viewBox="0 0 52 52" aria-hidden="true"><polygon points="' + pts.join(' ') + '"/></svg>';
+  const STAR = $('star');
   const KD = { dflt: 0.58, left: 0.16, right: 0.86, min: 0.06, max: 0.94 };
   const setD = (f, keep) => { f = Math.max(KD.min, Math.min(KD.max, f)); A.style.setProperty('--d', (f * 100).toFixed(2) + '%');
     const was = MODE; MODE = f >= KD.right ? 'action' : 'talk'; A.classList.toggle('open', f <= KD.left); A.classList.toggle('action', MODE === 'action');
@@ -424,9 +430,9 @@ let MODE = 'talk';
     if (keep) store('orv.d', f); };
   setD(load('orv.d', KD.dflt), false);
   let drag = false, x0 = 0, f0 = 0, lastTap = 0;
-  D.addEventListener('pointerdown', e => { drag = true; x0 = e.clientX; const r = M.getBoundingClientRect(); f0 = (D.getBoundingClientRect().left - r.left) / r.width; D.setPointerCapture(e.pointerId); });
-  D.addEventListener('pointermove', e => { if (!drag) return; const r = M.getBoundingClientRect(); setD(f0 + (e.clientX - x0) / r.width, false); });
-  D.addEventListener('pointerup', e => { if (!drag) return; drag = false; const r = M.getBoundingClientRect(), f = f0 + (e.clientX - x0) / r.width;
+  STAR.addEventListener('pointerdown', e => { drag = true; x0 = e.clientX; const r = M.getBoundingClientRect(); f0 = (D.getBoundingClientRect().left - r.left) / r.width; STAR.setPointerCapture(e.pointerId); });
+  STAR.addEventListener('pointermove', e => { if (!drag) return; const r = M.getBoundingClientRect(); setD(f0 + (e.clientX - x0) / r.width, false); });
+  STAR.addEventListener('pointerup', e => { if (!drag) return; drag = false; const r = M.getBoundingClientRect(), f = f0 + (e.clientX - x0) / r.width;
     const t = Date.now(); if (Math.abs(e.clientX - x0) < 4 && t - lastTap < 350) { setD(KD.dflt, true); lastTap = 0; return; } lastTap = t; setD(f, true); });
 })();
 
