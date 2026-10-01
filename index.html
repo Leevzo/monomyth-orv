@@ -48,13 +48,12 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--in
 #left { flex: 0 0 var(--d, 58%); width: var(--d, 58%); min-width: 0; display: flex; flex-direction: column; }
 /* the list: numbers on the very left edge, times beside them, the words floating free */
 #list { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; padding-bottom: 8px; touch-action: pan-y; }
-/* the divider is only a symbol: a seven-pointed star, barely there, in the middle of the screen. Drag the star. */
+/* the divider is only a word: "inkling", faint, in the middle of the screen. Drag the word. */
 #div { flex: 0 0 0px; position: relative; touch-action: none; user-select: none; -webkit-user-select: none; }
-#star { position: absolute; left: -26px; top: 50%; width: 52px; height: 52px; margin-top: -26px; cursor: col-resize; touch-action: none; opacity: .16; }
-#star polygon { fill: none; stroke: var(--ink); stroke-width: 1.4; }
+#star { position: absolute; left: 0; top: 50%; transform: translate(-50%, -50%); padding: 14px 10px; cursor: col-resize; touch-action: none;
+  font-size: 15px; letter-spacing: .12em; color: var(--ink); opacity: .16; white-space: nowrap; }
 #app.open #star { opacity: .32; }
-#app.action #star { opacity: .5; }
-#app.action #star polygon { stroke: var(--gold); }
+#app.action #star { opacity: .5; color: var(--gold); }
 #right { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; padding-bottom: calc(var(--orvh) - 36px); }
 #talk { flex: 1 1 auto; overflow-y: auto; display: none; padding: 0 2px 8px 6px; }
 #app.open #talk { display: block; }
@@ -419,9 +418,7 @@ const ORV = { listening: false };
 let MODE = 'talk';
 (function divider() {
   const D = $('div'), A = $('app'), M = $('main');
-  // a {7/3} heptagram: seven points, each joined to the third one on
-  const pts = []; for (let i = 0; i < 7; i++) { const a = -Math.PI / 2 + (i * 3 % 7) * 2 * Math.PI / 7; pts.push((26 + 22 * Math.cos(a)).toFixed(2) + ',' + (26 + 22 * Math.sin(a)).toFixed(2)); }
-  D.innerHTML = '<svg id="star" viewBox="0 0 52 52" aria-hidden="true"><polygon points="' + pts.join(' ') + '"/></svg>';
+  D.innerHTML = '<span id="star" aria-hidden="true">inkling</span>';   // his symbol comes later; for now, the word, faint
   const STAR = $('star');
   const KD = { dflt: 0.58, left: 0.16, right: 0.86, min: 0.06, max: 0.94 };
   const setD = (f, keep) => { f = Math.max(KD.min, Math.min(KD.max, f)); A.style.setProperty('--d', (f * 100).toFixed(2) + '%');
