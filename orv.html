@@ -120,7 +120,7 @@ const K = {
   wheel: ['#FF7A12', '#FF12A1', '#FA12FF', '#9212FF', '#2A12FF', '#126EFF', '#12D6FF', '#12FFC2', '#12FF5A', '#22FF12', '#8AFF12', '#F2FF12'],
   seed: 'You are Orv, the teasing one-eyed homunculus and Hand. Read before speaking. Surface shapes, don\'t invent. Guide the King to write. Tease him.',
   freeDoors: ['groq', 'gemini', 'openrouter'], password: 'Cha-ching',
-  swipe: 70, orvScale: 3, beat: [1400, 520, 130, 190], fps: 12, memory: 6, maxOps: 12, timeoutMs: 45000
+  swipe: 70, orvScale: 3, beat: [1400, 520, 130, 190], fps: 12, memory: 6, maxOps: 12, timeoutMs: 120000
 };
 const BOX = 'monomyth.focus.byok.v1';
 const DOORS = {
@@ -136,7 +136,17 @@ const nowIso = () => new Date().toISOString();
 
 /* ═══ STORAGE: his list and his words, on this phone ═══ */
 const load = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } };
-const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { say('(This phone would not keep that. Tap keep to save a copy.)', true); return false; } };
+/* THE SPARE: every write is copied into IndexedDB too. If the phone ever drops localStorage (the key, the list),
+   the page finds it empty on open, pours the spare back in and reloads once. */
+const SPARE = { db: null, t: 0,
+  open() { return this.db || (this.db = new Promise((ok, no) => { try { const r = indexedDB.open('orv-spare', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('s'); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); } catch (e) { no(e); } })); },
+  snap() { const o = {}; try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k === BOX || k.startsWith('orv.')) o[k] = localStorage.getItem(k); } } catch (e) {} return o; },
+  save() { clearTimeout(this.t); this.t = setTimeout(async () => { try { const db = await this.open(), o = this.snap();
+    if (!Object.keys(o).length) return; db.transaction('s', 'readwrite').objectStore('s').put(o, 'all'); } catch (e) {} }, 300); },
+  async get() { try { const db = await this.open(); return await new Promise(ok => { const r = db.transaction('s').objectStore('s').get('all'); r.onsuccess = () => ok(r.result || null); r.onerror = () => ok(null); }); } catch (e) { return null; } }
+};
+const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); SPARE.save(); return true; } catch (e) { say('(This phone would not keep that. Tap keep to save a copy.)', true); return false; } };
 function blank() { return { v: 1, tasks: [], one: null, n: 0 }; }
 /* #new: a new kingdom. Whatever was here is set aside (kept under orv.archive.<time>, never deleted). */
 if (location.hash === '#new') {
@@ -226,8 +236,38 @@ setInterval(tick, 1000);
 
 /* ═══ ORV'S WORDS on screen ═══ */
 let TYPING = 0;
-function say(text, stage) { clearInterval(TYPING); const s = $('say'); s.textContent = text; s.classList.toggle('stage', !!stage); }
-function typeSay(text, stage) { clearInterval(TYPING); const s = $('say'); s.textContent = ''; s.classList.toggle('stage', !!stage);
+/* ═══ THINKING: a pixel wheel of the twelve colours turning, beside a skeleton of words, pixels running through it ═══ */
+let LOAD = 0;
+function unload() { if (LOAD) { cancelAnimationFrame(LOAD); LOAD = 0; } }
+function loading() {
+  clearInterval(TYPING); unload(); const s = $('say'); s.textContent = ''; s.classList.remove('stage');
+  const P = 3, W = Math.max(40, Math.floor((s.clientWidth || 200) / P)), H = 16;
+  const cv = document.createElement('canvas'); cv.width = W * P; cv.height = H * P; cv.style.width = cv.width + 'px'; cv.style.height = cv.height + 'px';
+  cv.style.imageRendering = 'pixelated'; cv.setAttribute('aria-label', 'Orv is thinking'); s.appendChild(cv);
+  const x = cv.getContext('2d'), N = K.wheel.length, cx = 7.5, cy = 7.5;
+  // the skeleton: three lines of word-blocks, two cells tall, the last line shorter
+  const words = [], x0 = 18;
+  [[1, 1], [6, 1], [11, .6]].forEach(([y, part]) => { let at = x0; const end = x0 + Math.floor((W - x0 - 1) * part);
+    while (at < end - 2) { const w = Math.min(end - at, 3 + Math.floor(Math.random() * 7)); if (w >= 2) words.push({ x: at, y, w }); at += w + 2; } });
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let t0 = 0, last = -1;
+  const draw = ts => {
+    if (!t0) t0 = ts; const f = Math.floor((ts - t0) / (1000 / K.fps));
+    if (f !== last) { last = f; x.clearRect(0, 0, cv.width, cv.height);
+      for (let j = 0; j < 16; j++) for (let i = 0; i < 16; i++) {          // the wheel: a ring of pixels, the colours turning
+        const dx = i - cx, dy = j - cy, r = Math.hypot(dx, dy); if (r < 4.2 || r > 7.4) continue;
+        const a = (Math.atan2(dy, dx) / (Math.PI * 2) + 1) % 1, k = Math.floor(a * N + f * .75) % N;
+        x.fillStyle = K.wheel[k]; x.fillRect(i * P, j * P, P, P); }
+      const sweep = (f * 1.5) % (W + 20) - 10;                              // the run of light through the words
+      words.forEach(wd => { for (let i = 0; i < wd.w; i++) for (let j = 0; j < 2; j++) {
+        const cxx = wd.x + i, near = Math.abs(cxx - sweep), lit = near < 3 || Math.random() < .015;
+        x.fillStyle = lit ? K.wheel[(cxx + f) % N] : '#5a5a5a'; x.fillRect(cxx * P, (wd.y + j) * P, P, P); } }); }
+    if (!still) LOAD = requestAnimationFrame(draw);
+  };
+  LOAD = requestAnimationFrame(draw);
+}
+function say(text, stage) { clearInterval(TYPING); unload(); const s = $('say'); s.textContent = text; s.classList.toggle('stage', !!stage); }
+function typeSay(text, stage) { clearInterval(TYPING); unload(); const s = $('say'); s.textContent = ''; s.classList.toggle('stage', !!stage);
   const a = Array.from(String(text)); let i = 0; TYPING = setInterval(() => { i = Math.min(a.length, i + 3); s.textContent = a.slice(0, i).join(''); if (i >= a.length) clearInterval(TYPING); }, 1000 / K.fps); }
 function lastLine() { /* his lines show only when the divider is dragged far left */ }
 /* the whole talk, on the right pane: every word he said and every answer, from the log, oldest first */
@@ -249,15 +289,22 @@ function headers(d, key) {
   if (d === 'gemini') return { 'content-type': 'application/json', 'x-goog-api-key': key };
   return { 'content-type': 'application/json', authorization: 'Bearer ' + key };
 }
-async function model(d, key) {
+async function model(d, key, avoid) {
   const b = box(), named = String(((b.models || {})[d]) || '') || String((((b.lists || {})[d]) || {}).pick || '');
-  if (named) return named;
-  const kept = load('orv.model', {}); if (kept[d]) return kept[d];
+  if (named && named !== avoid) return named;
+  const kept = load('orv.model', {}); if (kept[d] && kept[d] !== avoid) return kept[d];
   const o = await (await fetchT(DOORS[d].list, { headers: headers(d, key) })).json();
   let ids = d === 'gemini' ? (o.models || []).filter(m => (m.supportedGenerationMethods || []).includes('generateContent')).map(m => String(m.name).replace(/^models\//, ''))
                            : (o.data || []).map(m => String(m.id));
   ids = ids.filter(id => !/whisper|tts|embed|guard|image|audio|vision|search|realtime|transcribe|moderation|veo|imagen|live/i.test(id));
+  if (avoid) ids = ids.filter(id => id !== avoid);
   if (!ids.length) throw new Error('that door listed no models');
+  if (d === 'gemini') {   // the newest plain flash: fast, free, not a preview
+    const ver = id => parseFloat((/gemini-(\d+(?:\.\d+)?)/.exec(id) || [0, 0])[1]);
+    const flash = ids.filter(id => /^gemini-[\d.]+-flash(-\d+)?$/.test(id)).sort((a, z) => ver(z) - ver(a));
+    const g = flash[0] || ids.find(id => /flash/i.test(id) && !/preview|exp/i.test(id)) || ids.find(id => /flash/i.test(id)) || ids[0];
+    kept[d] = g; store('orv.model', kept); return g;
+  }
   // a fast, able model, chosen from the door's own list (never a name fixed in this code)
   const prefer = [/llama-3\.3-70b|gpt-oss-120b|qwen3|kimi|llama-4/i, /sonnet|flash|mini|70b/i];
   const pick = (prefer.map(re => ids.find(id => re.test(id))).find(Boolean)) || ids[0];
@@ -265,6 +312,19 @@ async function model(d, key) {
 }
 function doorError(r, o) { const e = o && o.error, msg = typeof e === 'string' ? e : (e && e.message) || (o && o.message) || 'status ' + r.status;
   const x = new Error(msg); x.status = r.status; return x; }
+/* one answer: if the door is busy, slow or the model is gone, try once more with another model */
+async function answer(d, key, sys, turns) {
+  const m = await model(d, key);
+  try { return { m, text: await call(d, key, m, sys, turns) }; }
+  catch (e) {
+    if (e.status === 401 || e.status === 403) throw e;
+    const kept = load('orv.model', {}); delete kept[d]; store('orv.model', kept);
+    await new Promise(r => setTimeout(r, 1200));
+    const m2 = await model(d, key, m);
+    return { m: m2, text: await call(d, key, m2, sys, turns) };
+  }
+}
+const plainWhy = e => e && e.name === 'AbortError' ? 'it took too long' : String((e && e.message) || e).slice(0, 160);
 async function call(d, key, m, system, turns) {
   if (d === 'anthropic') {
     const body = { model: m, max_tokens: 4096, system, messages: turns, output_config: { effort: 'low' } };
@@ -274,9 +334,11 @@ async function call(d, key, m, system, turns) {
     return (o.content || []).filter(c => c.type === 'text').map(c => c.text).join('');
   }
   if (d === 'gemini') {
-    const r = await fetchT(DOORS.gemini.chat + encodeURIComponent(m) + ':generateContent', { method: 'POST', headers: headers(d, key),
-      body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: turns.map(t => ({ role: t.role === 'assistant' ? 'model' : 'user', parts: [{ text: t.content }] })),
-        generationConfig: { responseMimeType: 'application/json' } }) });
+    const body = { systemInstruction: { parts: [{ text: system }] }, contents: turns.map(t => ({ role: t.role === 'assistant' ? 'model' : 'user', parts: [{ text: t.content }] })),
+      generationConfig: { responseMimeType: 'application/json', thinkingConfig: { thinkingBudget: 0 } } };
+    const go = () => fetchT(DOORS.gemini.chat + encodeURIComponent(m) + ':generateContent', { method: 'POST', headers: headers(d, key), body: JSON.stringify(body) });
+    let r = await go();
+    if (r.status === 400) { delete body.generationConfig.thinkingConfig; r = await go(); }
     const o = await r.json().catch(() => ({})); if (!r.ok) throw doorError(r, o);
     return ((((o.candidates || [])[0] || {}).content || {}).parts || []).map(p => p.text || '').join('');
   }
@@ -358,10 +420,10 @@ async function speak(raw) {
   const key = String(box().apiKey || '').trim(), d = keyDoor();
   if (!key || !d) return say('(Orv taps the empty key slot.) Paste a key on the line and tap me.', true);
   if (!paidOpen(d)) return say('(The ' + d + ' door costs coin. Type ' + K.password + ' first.)', true);
-  lastLine(words); BUSY = true; ORV.listening = true; say('…', true);
+  lastLine(words); BUSY = true; ORV.listening = true; loading();
   const chat = load('orv.chat', []).slice(-K.memory * 2), turns = chat.concat([{ role: 'user', content: words }]);
   try {
-    const m = await model(d, key), text = await call(d, key, m, system(), turns);
+    const { m, text } = await answer(d, key, system(), turns);
     let reply = null; try { reply = JSON.parse(text); } catch (e) { const j = /\{[\s\S]*\}/.exec(text); if (j) try { reply = JSON.parse(j[0]); } catch (e2) { reply = null; } }
     if (!reply || typeof reply !== 'object') { log({ who: 'ai:' + d + ':' + m, what: 'unparsed', text }); say(String(text).slice(0, 600)); }
     else { const r = apply(reply.ops); log({ who: 'ai:' + d + ':' + m, what: 'answered', text: String(reply.say || ''), ops: reply.ops || [], dropped: r.dropped });
@@ -369,7 +431,7 @@ async function speak(raw) {
       else typeSay(String(reply.say || '').slice(0, 900) || '(Orv nods.)', !reply.say);
       if (r.done) FIRST = false; }
     store('orv.chat', turns.concat([{ role: 'assistant', content: text }]).slice(-K.memory * 2));
-  } catch (e) { log({ who: 'ai:' + d, what: 'error', text: String(e.message || e) }); if (e.status === 401 || e.status === 403) { BUSY = false; ORV.listening = false; return gate('The ' + d + ' door turned the key away: ' + String(e.message || e).slice(0, 140)); } say('(The door did not answer: ' + String(e.message || e).slice(0, 140) + '. Your words are kept.)', true); }
+  } catch (e) { log({ who: 'ai:' + d, what: 'error', text: String(e.message || e) }); if (e.status === 401 || e.status === 403) { BUSY = false; ORV.listening = false; return gate('The ' + d + ' door turned the key away: ' + String(e.message || e).slice(0, 140)); } say('(Orv could not get through: ' + plainWhy(e) + '. Your words are kept; tap me to try again.)', true); $('line').value = words; }
   BUSY = false; ORV.listening = false; render(); drawChat();
 }
 /* "many thanks": Orv sums up the talk in a line or two; the summary stays in the window until he types again */
@@ -377,8 +439,8 @@ async function thanks() {
   const chat = load('orv.chat', []), key = String(box().apiKey || '').trim(), d = keyDoor();
   let sum = '';
   if (chat.length && key && d && paidOpen(d)) {
-    BUSY = true; ORV.listening = true; say('…', true);
-    try { const m = await model(d, key), text = await call(d, key, m, system() + '\n\nThe King said "many thanks": the talk is over. Put in "say" a summary of this talk in one or two short sentences (what changed on the list, what comes next). "ops" must be [].',
+    BUSY = true; ORV.listening = true; loading();
+    try { const { text } = await answer(d, key, system() + '\n\nThe King said "many thanks": the talk is over. Put in "say" a summary of this talk in one or two short sentences (what changed on the list, what comes next). "ops" must be [].',
       chat.concat([{ role: 'user', content: 'many thanks' }]));
       let r = null; try { r = JSON.parse(text); } catch (e) { const j = /\{[\s\S]*\}/.exec(text); if (j) try { r = JSON.parse(j[0]); } catch (e2) { r = null; } }
       sum = r && r.say ? String(r.say) : ''; } catch (e) { sum = ''; }
@@ -511,7 +573,12 @@ async function gateTry(raw) {
 $('gateForm').addEventListener('submit', e => { e.preventDefault(); gateTry($('gateLine').value); });   // Go on the keyboard, or "open"
 
 const HAD = box().apiKey, HAD_D = keyDoor();
-if (!HAD || !HAD_D) gate();
+if (!HAD || !HAD_D) { gate(); (async () => {          // the key is gone from localStorage: is it in the spare?
+  const sp = await SPARE.get(); let again = false; try { again = sessionStorage.getItem('orv.poured') === '1'; } catch (e) {}
+  if (sp && sp[BOX] && !again) { try { Object.keys(sp).forEach(k => localStorage.setItem(k, sp[k])); sessionStorage.setItem('orv.poured', '1'); } catch (e) { return; }
+    location.reload(); }
+  else if (sp && sp[BOX]) gateSay('This phone keeps forgetting the key. Is Safari in Private mode? Paste it once more.', true);
+})(); }
 else if (!paidOpen(HAD_D)) { gate(); CHA = HAD_D; $('gateLine').placeholder = K.password;
   gateSay('Your ' + HAD_D + ' key costs money. Type ' + K.password + ' to open it, or paste another key.'); }
 else if (FIRST && !open().length) typeSay('(Orv rubs his claws together.) Your first Breath, High King. Tell me everything that is alive in you today, every road you are on. I will make the list.', true);
