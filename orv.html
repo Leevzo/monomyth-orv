@@ -83,22 +83,30 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--in
 #talk .k { color: var(--dim); font-size: 15px; margin: 14px 0 4px; white-space: pre-wrap; }
 #talk .o { font-size: 16px; line-height: 1.35; margin: 0 0 4px; white-space: pre-wrap; }
 #talk .sum { color: var(--gold); font-size: 14px; margin: 10px 0 18px; }
-#keep { position: absolute; top: calc(env(safe-area-inset-top) + 14px); right: var(--pad); font-size: var(--small);
+#keep { position: absolute; top: calc(env(safe-area-inset-top) + 14px); right: calc(var(--pad) + 62px); font-size: var(--small);
   color: var(--faint); background: none; border: 0; padding: 6px; font-family: inherit; }
 #flash { position: fixed; inset: 0; pointer-events: none; opacity: 0; }
-/* THE GATE: before there is a key, the whole screen is one line in the middle */
-#gate { position: fixed; inset: 0; z-index: 10; background: var(--ground); display: flex; flex-direction: column; align-items: center; justify-content: center;
-  padding: 0 28px; transition: opacity .4s; }
-#gate.gone { opacity: 0; pointer-events: none; }
-#gateForm { width: min(100%, 420px); display: flex; align-items: baseline; border-bottom: 1px solid var(--faint); margin: 0; }
-#gateGo { font: inherit; font-size: 15px; color: var(--gold); background: none; border: 0; padding: 8px 2px 8px 10px; }
-#gateLine { flex: 1 1 auto; min-width: 0; width: auto; font: inherit; font-size: 17px; color: var(--ink); background: transparent; border: 0; border-radius: 0;
-  padding: 8px 2px; outline: none; text-align: center; font-size: 15px; }
-#gateLine::placeholder { color: var(--faint); }
-#gateSay { width: min(100%, 420px); min-height: 3.6em; margin-top: 12px; font-size: var(--small); line-height: 1.4; color: var(--dim); text-align: center; white-space: pre-wrap; }
-#gateSay.bad { color: var(--late); }
-#gateDiag { position: fixed; bottom: calc(env(safe-area-inset-bottom) + 14px); left: 0; right: 0; text-align: center; font-size: 11px; color: var(--faint); }
-body.gated #app, body.gated #orv, body.gated #keep { visibility: hidden; }
+/* THE SALMON OF KNOWLEDGE: the settings live behind him, top right */
+#salmon { position: fixed; z-index: 20; top: calc(env(safe-area-inset-top) + 10px); right: calc(var(--pad) - 4px); image-rendering: pixelated; cursor: pointer; padding: 6px; }
+#salmon.call { animation: swim 1.1s steps(2) infinite; }
+@keyframes swim { 50% { transform: translateX(-4px); } }
+@media (prefers-reduced-motion: reduce) { #salmon.call { animation: none; } }
+#set { position: fixed; inset: 0; z-index: 15; background: var(--ground); overflow-y: auto;
+  padding: calc(env(safe-area-inset-top) + 64px) 24px calc(env(safe-area-inset-bottom) + 24px); }
+#set h2 { font-family: 'Dogica', ui-monospace, monospace; font-weight: normal; font-size: 18px; color: var(--gold); margin: 0 0 26px; }
+.sl { display: flex; align-items: flex-end; gap: 12px; margin: 0 0 18px; }
+.sl > span { flex: 0 0 52px; font-size: var(--small); color: var(--faint); padding-bottom: 9px; }
+.sl textarea, .sl input { flex: 1 1 auto; min-width: 0; font: inherit; font-size: 15px; line-height: 1.35; color: var(--ink); background: transparent;
+  border: 0; border-bottom: 1px solid var(--faint); border-radius: 0; padding: 6px 2px; outline: none; resize: none; overflow: hidden;
+  word-break: break-all; -webkit-appearance: none; }
+.sl textarea:focus, .sl input:focus { border-bottom-color: var(--dim); }
+.sl textarea::placeholder, .sl input::placeholder { color: var(--faint); }
+#setTest { font: inherit; font-size: 15px; color: var(--gold); background: none; border: 0; padding: 4px 0 4px 64px; cursor: pointer; }
+#setSay { min-height: 2.8em; margin: 10px 0 22px 64px; font-size: var(--small); line-height: 1.45; color: var(--dim); white-space: pre-wrap; }
+#setSay.bad { color: var(--late); } #setSay.good { color: var(--gold); }
+#setDiag { margin: 30px 0 0 64px; font-size: 11px; line-height: 1.5; color: var(--faint); white-space: pre-wrap; }
+body.setting #app, body.setting #orv, body.setting #keep { visibility: hidden; }
+.sl[hidden], #set[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) { .row.sel .word, .line { transform: none; } }
 </style>
 </head>
@@ -116,7 +124,16 @@ body.gated #app, body.gated #orv, body.gated #keep { visibility: hidden; }
 <button id="keep" aria-label="keep a copy of the list">keep</button>
 <input id="restore" type="file" accept="application/json,.json" hidden>
 <div id="flash"></div>
-<div id="gate" hidden><form id="gateForm" action="#" autocomplete="off"><input id="gateLine" type="text" inputmode="text" enterkeyhint="go" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="paste key" aria-label="paste your key"><button id="gateGo" type="submit">open</button></form><div id="gateSay" aria-live="polite"></div><div id="gateDiag"></div></div>
+<canvas id="salmon" role="button" tabindex="0" aria-label="settings (the salmon of knowledge)"></canvas>
+<div id="set" hidden role="dialog" aria-label="settings">
+  <h2>settings</h2>
+  <label class="sl"><span>key</span><textarea id="setKey" rows="1" enterkeyhint="done" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="paste your key" aria-label="your key"></textarea></label>
+  <label class="sl" id="setChaRow" hidden><span>coin</span><input id="setCha" type="text" enterkeyhint="done" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Cha-ching" aria-label="the word that lets Orv spend"></label>
+  <label class="sl"><span>model</span><input id="setModel" type="text" enterkeyhint="done" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="chosen for you" aria-label="the model Orv thinks with"></label>
+  <button id="setTest" type="button">test</button>
+  <div id="setSay" aria-live="polite"></div>
+  <div id="setDiag"></div>
+</div>
 <script>
 'use strict';
 /* ═══ KNOBS: every tunable value, for his eye ═══ */
@@ -409,7 +426,7 @@ let FIRST = !load('orv.log', []).some(e => e.who === 'k' && e.what === 'said');
 async function speak(raw) {
   const words = String(raw || '').trim(); if (!words || BUSY) return;
   $('line').value = '';
-  if (looksLikeKey(words)) { gate(); return gateTry(words); }
+  if (looksLikeKey(words)) { setOpen(); $('setKey').value = words.replace(/\s+/g, ''); grow($('setKey')); return setTest(); }
   log({ who: 'k', what: 'said', text: words });               // his words first, verbatim, always
   if (FIRST) { const B = load('orv.breath', []); B.push({ at: nowIso(), text: words, first: true }); store('orv.breath', B); }
   store('orv.summary', '');
@@ -424,8 +441,8 @@ async function speak(raw) {
       const kept = load('orv.model', {}); kept[d2] = hit; store('orv.model', kept); const b = box(); if (b.models && b.models[d2]) { delete b.models[d2]; store(BOX, b); }
       return say('Now thinking with ' + hit + '.', true); } catch (e) { return say('(The door would not list its models.)', true); } }
   const key = String(box().apiKey || '').trim(), d = keyDoor();
-  if (!key || !d) return say('(Orv taps the empty key slot.) Paste a key on the line and tap me.', true);
-  if (!paidOpen(d)) return say('(The ' + d + ' door costs coin. Type ' + K.password + ' first.)', true);
+  if (!key || !d) { $('line').value = words; setOpen('Your key goes here, High King. Paste it and tap test.'); return; }
+  if (!paidOpen(d)) { $('line').value = words; setOpen('The ' + d + ' key costs money. Type ' + K.password + ' on the coin line.'); return; }
   lastLine(words); BUSY = true; ORV.listening = true; loading();
   const chat = load('orv.chat', []).slice(-K.memory * 2), turns = chat.concat([{ role: 'user', content: words }]);
   try {
@@ -437,7 +454,7 @@ async function speak(raw) {
       else typeSay(String(reply.say || '').slice(0, 900) || '(Orv nods.)', !reply.say);
       if (r.done) FIRST = false; }
     store('orv.chat', turns.concat([{ role: 'assistant', content: text }]).slice(-K.memory * 2));
-  } catch (e) { log({ who: 'ai:' + d, what: 'error', text: String(e.message || e) }); if (e.status === 401 || e.status === 403) { BUSY = false; ORV.listening = false; return gate('The ' + d + ' door turned the key away: ' + String(e.message || e).slice(0, 140)); } say('(Orv could not get through: ' + plainWhy(e) + '. Your words are kept; tap me to try again.)', true); $('line').value = words; }
+  } catch (e) { log({ who: 'ai:' + d, what: 'error', text: String(e.message || e) }); if (e.status === 401 || e.status === 403) { BUSY = false; ORV.listening = false; $('line').value = words; return setOpen('The ' + d + ' door turned the key away: ' + String(e.message || e).slice(0, 140), true); } say('(Orv could not get through: ' + plainWhy(e) + '. Your words are kept; tap me to try again.)', true); $('line').value = words; }
   BUSY = false; ORV.listening = false; render(); drawChat();
 }
 /* "many thanks": Orv sums up the talk in a line or two; the summary stays in the window until he types again */
@@ -539,59 +556,123 @@ function fromHash() { const m = /^#say=(.*)$/s.exec(location.hash); if (!m) retu
   history.replaceState(null, '', location.pathname + location.search); if (w.trim()) speak(w); }
 fromHash(); window.addEventListener('hashchange', fromHash);
 drawChat();
-/* ═══ THE GATE: one line in the middle. Paste any key and tap open. No format checks:
-   the key is tried on each door's model list (free, no tokens) and the door that takes it is the door.
-   A paid door (Anthropic, OpenAI, Grok) waits for Cha-ching. ═══ */
+/* ═══ SETTINGS, behind the Salmon of Knowledge (top right). Minimal lines: key · coin (paid doors only) · model.
+   The key box grows with the letters. "test" asks the doors for their model lists (free) to find whose key it is,
+   keeps it, reads it back to prove the phone kept it, then asks Orv one short real question so you SEE him answer.
+   The app never blocks on a key screen: with no key it opens anyway and the salmon swims until it is fed. ═══ */
 const TRY = ['gemini', 'groq', 'openrouter', 'anthropic', 'openai', 'xai'];
-let CHA = null, GATE_BUSY = false;
-function gate(why) {
-  CHA = null; gateDiag(); document.body.classList.add('gated'); const g = $('gate'); g.hidden = false; g.classList.remove('gone');
-  const L = $('gateLine'); L.value = ''; L.placeholder = 'paste key'; gateSay(why || '', !!why); setTimeout(() => L.focus(), 50);
+let SET_BUSY = false;
+const grow = el => { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; };
+function setSay(t, how) { const s = $('setSay'); s.textContent = t || ''; s.classList.toggle('bad', how === 'bad'); s.classList.toggle('good', how === 'good'); }
+function setDiag() {
+  const app = (navigator.standalone || matchMedia('(display-mode: standalone)').matches) ? 'the Home Screen app' : 'a Safari tab';
+  const kat = load('orv.keyAt', null), d = keyDoor();
+  $('setDiag').textContent = 'key kept: ' + (box().apiKey ? (d || '?') + (kat ? ' since ' + fmtAt(kat) : '') : 'none') +
+    '\nopens this phone remembers: ' + OPENS + (OPENS === 1 ? '  (if this stays 1 every time, the phone is wiping Orv)' : '') +
+    '\nopened as ' + app + ' · ' + location.pathname;
 }
-function gateDiag() { const app = (navigator.standalone || matchMedia('(display-mode: standalone)').matches) ? 'app' : 'safari tab';
-  let pv = false; try { pv = !window.indexedDB; } catch (e) { pv = true; }
-  const kat = load('orv.keyAt', null);
-  $('gateDiag').textContent = 'opened as ' + app + ' · opens kept: ' + OPENS + ' · key last kept: ' + (kat ? fmtAt(kat) : 'never') + (pv ? ' · no IndexedDB' : ''); }
-function gateSay(t, bad) { const s = $('gateSay'); s.textContent = t; s.classList.toggle('bad', !!bad); }
-function ungate(d) {
-  $('gate').classList.add('gone'); document.body.classList.remove('gated'); setTimeout(() => { $('gate').hidden = true; }, 450);
-  typeSay(FIRST && !open().length ? '(Orv rubs his claws together.) Your first Breath, High King. Tell me everything that is alive in you today. I will make the list.'
-                                  : '(Orv blinks.) Talk to me.', true);
+function setFill() {
+  const k = String(box().apiKey || ''), d = keyDoor();
+  if (document.activeElement !== $('setKey')) $('setKey').value = k;
+  $('setModel').value = d ? String((load('orv.model', {}) || {})[d] || '') : '';
+  $('setChaRow').hidden = !(d && !paidOpen(d));
+  grow($('setKey')); setDiag();
 }
-async function gateTry(raw) {
-  const v = String(raw || '').replace(/\s+/g, ''); if (!v || GATE_BUSY || !document.body.classList.contains('gated')) return;
-  if (CHA && v.toLowerCase() === K.password.toLowerCase()) {
-    const p = load('orv.paid', {}); p[CHA] = nowIso(); store('orv.paid', p); log({ who: 'k', what: 'cha-ching', door: CHA }); return ungate(CHA);
-  }
-  GATE_BUSY = true; $('gateLine').disabled = true; gateSay('trying the key…');
-  const guess = doorOf(v), order = guess ? [guess].concat(TRY.filter(d => d !== guess)) : TRY;
-  let door = null, firstWhy = '';
-  for (const d of order) {
-    try { const r = await fetchT(DOORS[d].list, { headers: headers(d, v) }); const o = await r.json().catch(() => ({}));
-      if (r.ok) { door = d; break; } if (!firstWhy) firstWhy = doorError(r, o).message;
-    } catch (e) { if (!firstWhy) firstWhy = e.name === 'AbortError' ? 'no answer in time' : String(e.message || e); }
-  }
-  GATE_BUSY = false; $('gateLine').disabled = false;
-  if (!door) { $('gateLine').value = ''; $('gateLine').focus(); log({ who: 'k', what: 'key refused', text: firstWhy });
-    return gateSay('No door took that key. ' + String(firstWhy).slice(0, 160), true); }
-  const b = box(); b.apiKey = v; b.door = door; store(BOX, b); log({ who: 'k', what: 'key', door }); store('orv.keyAt', nowIso());
-  if (box().apiKey !== v) return gateSay('This phone refused to keep the key. In Settings → Apps → Safari, turn off "Block All Cookies", and make sure this is not a Private tab.', true);
-  const kept = load('orv.model', {}); delete kept[door]; store('orv.model', kept);
-  if (!paidOpen(door)) { CHA = door; $('gateLine').value = ''; $('gateLine').placeholder = K.password;
-    return gateSay('The key works (' + door + '). That one costs money. Type ' + K.password + ' to open it.'); }
-  ungate(door);
+function setOpen(why, bad) {
+  document.body.classList.add('setting'); $('set').hidden = false; $('salmon').classList.remove('call');
+  setFill(); setSay(why || '', bad ? 'bad' : '');
+  if (!box().apiKey) setTimeout(() => $('setKey').focus(), 60);
 }
-$('gateForm').addEventListener('submit', e => { e.preventDefault(); gateTry($('gateLine').value); });   // Go on the keyboard, or "open"
+function setClose() {
+  $('set').hidden = true; document.body.classList.remove('setting'); salmonCall();
+  const k = box().apiKey, d = keyDoor();
+  if (k && d && paidOpen(d) && $('line').value.trim()) { const w = $('line').value; speak(w); }
+}
+function salmonCall() { const d = keyDoor(); $('salmon').classList.toggle('call', !box().apiKey || !d || !paidOpen(d)); }
+async function setTest() {
+  if (SET_BUSY) return;
+  const v = $('setKey').value.replace(/\s+/g, '');
+  if (!v) { setSay('Paste your key on the key line first.', 'bad'); return $('setKey').focus(); }
+  SET_BUSY = true; $('setTest').textContent = 'testing…'; setSay('asking the doors whose key this is…');
+  try {
+    const guess = doorOf(v), order = guess ? [guess].concat(TRY.filter(x => x !== guess)) : TRY;
+    let door = null, firstWhy = '';
+    for (const d of order) {
+      try { const r = await fetchT(DOORS[d].list, { headers: headers(d, v) }); const o = await r.json().catch(() => ({}));
+        if (r.ok) { door = d; break; } if (!firstWhy) firstWhy = doorError(r, o).message;
+      } catch (e) { if (!firstWhy) firstWhy = e.name === 'AbortError' ? 'no answer in time' : String(e.message || e); }
+    }
+    if (!door) { log({ who: 'k', what: 'key refused', text: firstWhy }); return setSay('✗ No door took that key.\n' + String(firstWhy).slice(0, 200), 'bad'); }
+    const was = box().apiKey;
+    const b = box(); b.apiKey = v; b.door = door; store(BOX, b); store('orv.keyAt', nowIso()); log({ who: 'k', what: 'key', door });
+    if (box().apiKey !== v) return setSay('✗ The key works, but this phone refused to keep it.\nIn Settings → Apps → Safari, turn off "Block All Cookies", and do not use a Private tab.', 'bad');
+    if (was !== v) { const kept = load('orv.model', {}); delete kept[door]; store('orv.model', kept); }
+    setFill();
+    if (!paidOpen(door)) return setSay('✓ The key works (' + door + ') and this phone kept it.\nIt costs money: type ' + K.password + ' on the coin line, then test again.', 'good');
+    setSay('✓ ' + door + ' took the key and this phone kept it. Now asking Orv one short question…', 'good');
+    const t0 = performance.now();
+    const { m, text } = await answer(door, v, K.seed + '\nThis is a test of the line. Answer ONLY with the JSON object {"say": "<one short sentence to the High King, in your voice, saying you hear him>", "ops": []}.', [{ role: 'user', content: 'Orv, can you hear me?' }]);
+    let r = null; try { r = JSON.parse(text); } catch (e) { const j = /\{[\s\S]*\}/.exec(text); if (j) try { r = JSON.parse(j[0]); } catch (e2) { r = null; } }
+    const heard = (r && r.say) ? String(r.say) : String(text || '').slice(0, 200);
+    setFill();
+    setSay('✓ Works. ' + door + ' · ' + m + ' · ' + ((performance.now() - t0) / 1000).toFixed(1) + 's\nOrv: ' + heard, 'good');
+    log({ who: 'k', what: 'tested', door, model: m });
+  } catch (e) {
+    setSay('✗ The key is kept, but Orv could not get through: ' + plainWhy(e), 'bad');
+  } finally { SET_BUSY = false; $('setTest').textContent = 'test'; setDiag(); salmonCall(); }
+}
+$('setTest').addEventListener('click', setTest);
+$('setKey').addEventListener('input', () => grow($('setKey')));
+$('setKey').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); setTest(); } });
+$('setCha').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('setCha').blur(); } });
+$('setCha').addEventListener('change', () => {
+  const w = $('setCha').value.trim(), d = keyDoor(); if (!w || !d) return;
+  if (w.toLowerCase() !== K.password.toLowerCase()) return setSay('That is not the word. Type ' + K.password + '.', 'bad');
+  const p = load('orv.paid', {}); p[d] = nowIso(); store('orv.paid', p); log({ who: 'k', what: 'cha-ching', door: d });
+  $('setCha').value = ''; setFill(); setTest();
+});
+$('setModel').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('setModel').blur(); } });
+$('setModel').addEventListener('change', async () => {
+  const want = $('setModel').value.trim(), k = String(box().apiKey || ''), d = keyDoor(); if (!k || !d) return;
+  const kept = load('orv.model', {});
+  if (!want) { delete kept[d]; store('orv.model', kept); return setSay('Orv will choose the model himself.'); }
+  try { const o = await (await fetchT(DOORS[d].list, { headers: headers(d, k) })).json();
+    const ids = d === 'gemini' ? (o.models || []).map(x => String(x.name).replace(/^models\//, '')) : (o.data || []).map(x => String(x.id));
+    const hit = ids.find(id => id.toLowerCase() === want.toLowerCase()) || ids.find(id => id.toLowerCase().includes(want.toLowerCase()));
+    if (!hit) return setSay('The ' + d + ' door has no model like "' + want + '".', 'bad');
+    kept[d] = hit; store('orv.model', kept); $('setModel').value = hit; setSay('Orv now thinks with ' + hit + '. Tap test to hear him.', 'good');
+  } catch (e) { setSay('The door would not list its models: ' + plainWhy(e), 'bad'); }
+});
+/* the salmon himself: true pixels, drawn from a map, never smoothed */
+(function salmon() {
+  const MAP = [
+    '.......ooooo........',
+    '.....oodddddoo....oo',
+    '...oodddddddddo..odo',
+    '..odwedddkddddoooddo',
+    '.osssssssssssssssddo',
+    '..olllllssssssooosdo',
+    '...oollllllsso...oso',
+    '.....ooooooo......oo',
+  ];
+  const PAL = { o: '#3a1f2b', d: '#e0605a', s: '#fa8072', l: '#ffd0bf', w: '#ffffff', e: '#141733', k: '#b8473f' };
+  const S = 3, c = $('salmon'), x = c.getContext('2d');
+  c.width = MAP[0].length * S; c.height = MAP.length * S; c.style.width = c.width + 'px'; c.style.height = c.height + 'px';
+  MAP.forEach((row, y) => Array.from(row).forEach((ch, i) => { if (PAL[ch]) { x.fillStyle = PAL[ch]; x.fillRect(i * S, y * S, S, S); } }));
+  const tog = () => $('set').hidden ? setOpen() : setClose();
+  c.addEventListener('click', tog);
+  c.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tog(); } });
+})();
 
 const HAD = box().apiKey, HAD_D = keyDoor();
-if (!HAD || !HAD_D) { gate(); (async () => {          // the key is gone from localStorage: is it in the spare?
+salmonCall();
+if (!HAD || !HAD_D) { (async () => {                   // the key is gone from localStorage: is it in the spare?
   const sp = await SPARE.get(); let again = false; try { again = sessionStorage.getItem('orv.poured') === '1'; } catch (e) {}
   if (sp && sp[BOX] && !again) { try { Object.keys(sp).forEach(k => localStorage.setItem(k, sp[k])); sessionStorage.setItem('orv.poured', '1'); } catch (e) { return; }
-    location.reload(); }
-  else if (sp && sp[BOX]) gateSay('This phone keeps forgetting the key. Is Safari in Private mode? Paste it once more.', true);
+    location.reload(); return; }
+  typeSay('(Orv points a claw at the salmon, top right.) My key lives in there, High King.', true);
 })(); }
-else if (!paidOpen(HAD_D)) { gate(); CHA = HAD_D; $('gateLine').placeholder = K.password;
-  gateSay('Your ' + HAD_D + ' key costs money. Type ' + K.password + ' to open it, or paste another key.'); }
+else if (!paidOpen(HAD_D)) typeSay('(Orv points at the salmon.) The ' + HAD_D + ' key costs money. Type ' + K.password + ' on the coin line in there.', true);
 else if (FIRST && !open().length) typeSay('(Orv rubs his claws together.) Your first Breath, High King. Tell me everything that is alive in you today, every road you are on. I will make the list.', true);
 else if (load('orv.summary', '')) say(load('orv.summary', ''));
 </script>
