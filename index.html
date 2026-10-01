@@ -42,15 +42,24 @@
   Test seam (§9): on a loopback page only, ?mailbox=http://127.0.0.1:<port> sets window.INK_MAILBOX.
 
   PERSONAL MODE (§12) is the default: no #ink= in the URL and no project open opens HIS KINGDOM.
-    The Word Sword (left), the Constellation (right), Orv's corner (below). Storage under 'ink.me.':
+    The Word Sword anchored to the left edge; the Constellation upper right; Orv's corner lower right.
+    Between them two seams he drags, each carrying his name (HIGH KING LEEVZO · THE LUCKY); they hold
+    where let go (ink.me.layout) and a double-tap puts them back. No panels, no buttons in tables:
+    TAP a word = it opens AT THE WORD (its line, after/then, when) and everything below moves down;
+    tap again = it folds. SWIPE right = done (undone on a done word), left = delete (archive if done).
+    HOLD = the word becomes text in place (Enter or a tap away keeps it, Escape lets go). HOLD + DRAG =
+    it follows the finger: onto the crossguard = the one thing, between two words = moved there in
+    story order, onto a star = it comes after that star (a star dragged onto a star: the same). PULL the
+    top down = projects · keep · restore. Orv is the Summon rig (OrvSummon2) and IS the send.
+    Storage under 'ink.me.':
       state {v:1, tasks:[{id, word, text, after, done, at, doneAt?, deleted?, deletedAt?, archived?, archivedAt?}], one, n} ·
       log (append-only) · paid {door: at} (the doors opened by the word) · stash.<at> (a kingdom set aside
-      by a restore) · kept (the day of the last "keep" file).
+      by a restore) · kept (the day of the last "keep" file) · layout {v, h} (where he left the seams, px).
     His words are logged verbatim BEFORE any model call. State changes ONLY through applyOp() on an op
     that checkOp() passed, from his hand (who:'k') or from Orv (who:'ai:<door>:<model>'). Nothing is
     ever deleted: a delete or an archive (his hand only, by swipe) is a mark with its time, hidden from
-    the sword, the sky and Orv, kept in state and the log. TAP a word = its information; SWIPE it = act
-    (right: done / undone · left: delete an open one / archive a done one). With no usable key, Orv asks for one and the key is written into
+    the sword, the sky and Orv, kept in state and the log. A move (his hand only, by drag) rewrites the
+    after-links around the word. With no usable key, Orv asks for one and the key is written into
     the Sword's box ('monomyth.focus.byok.v1', the same {apiKey, models, lists} shape _glass.js keeps).
     #seed=<b64url(deflate(json))> plants a prepared kingdom only into an empty one, never over one.
 -->
@@ -121,7 +130,7 @@ ol { list-style: none; padding: 0; }
           display: grid; grid-template-columns: minmax(0, 1fr) var(--orv-w); gap: 8px; align-items: end; padding-top: 4px; }
 #left { min-width: 0; }
 #orv { padding: 0; min-width: var(--orv-w); align-self: end; }
-#orvCv { display: block; width: var(--orv-w); height: var(--orv-h); image-rendering: pixelated; image-rendering: crisp-edges; }
+#orvCv { display: block; width: var(--orv-w); height: var(--orv-h); image-rendering: crisp-edges; image-rendering: pixelated; }
 #chips { display: flex; flex-wrap: wrap; align-items: center; gap: 0 4px; }
 #chips button { padding: 0 6px; }
 #convo { max-height: 26vh; overflow-y: auto; }
@@ -143,54 +152,85 @@ ol { list-style: none; padding: 0; }
 summary { list-style: none; cursor: pointer; min-height: 44px; display: flex; align-items: center; }
 summary::-webkit-details-marker { display: none; }
 
-/* ═══ PERSONAL MODE (§12): the Word Sword left, the Constellation right, Orv's corner below.
-   Words float free on a grey ground; no boxes, no borders. The only gold is the crossguard. ═══ */
+/* ═══ PERSONAL MODE (§12): the Word Sword anchored to the left edge, the Constellation upper right,
+   Orv's corner lower right. Two seams the King drags: HIGH KING LEEVZO (vertical) and THE LUCKY
+   (horizontal) — the letters ARE the border, no line is drawn. Words float free on a grey ground;
+   no boxes, no borders, no panels. The only gold is the crossguard. ═══ */
 #me { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden;
       padding: env(safe-area-inset-top) var(--pad) calc(6px + env(safe-area-inset-bottom)); }
-#meTop { flex: 0 0 auto; display: flex; align-items: center; min-width: 0; }
+/* the top of the glass: pull it down and the shelf words come out with the finger */
+#meTop { flex: 0 0 auto; display: flex; align-items: center; min-width: 0; min-height: 40px;
+         touch-action: none; -webkit-user-select: none; user-select: none; cursor: grab; }
 #meTop .cue { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-#meShelf { margin-left: auto; display: flex; flex: 0 0 auto; }
+#meNudge { margin-left: auto; flex: 0 0 auto; }
 .quiet { color: var(--dim); padding: 0 6px; }
+#meShelf { flex: 0 0 auto; display: flex; align-items: center; overflow: hidden; min-width: 0; }
+#meShelf .quiet:first-child { padding-left: 0; }
 #meShelfList { flex: 0 0 auto; padding: 0 0 8px; }
 #meShelfList > button { display: block; }
-#meMid { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; display: grid;
-         grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 0 8px; align-items: start; }
-#sword { min-width: 0; text-align: center; padding: 4px 0 12px; }
-#sword { overflow-x: clip; }
-#sword button { display: block; width: 100%; text-align: center; padding: 0 2px; overflow-wrap: anywhere; }
-#sword button[data-id] { touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+#meEmpty { flex: 0 0 auto; color: var(--dim); font-size: 13px; line-height: 1.35; margin: 2px 0 6px; }
+#meEmpty button { min-height: 0; min-width: 0; padding: 0; color: var(--ink); }
+#meMid { flex: 1 1 auto; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr);
+         grid-template-columns: var(--vx, 46%) var(--seam) minmax(0, 1fr); }
+
+/* the sword: flush left, one word a line, scrolled on its own */
+#sword { min-width: 0; min-height: 0; overflow-y: auto; overflow-x: clip; text-align: left; padding: 4px 0 24px; }
+#sword button { display: block; width: 100%; text-align: left; padding: 0; overflow-wrap: anywhere; }
+#sword [data-id] { touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+#blade button { min-height: 30px; font-size: var(--blade); text-decoration: line-through; text-decoration-thickness: 1px; }
+#guard { font-family: 'Dogica', ui-monospace, monospace; color: var(--gold); line-height: 1.3; padding: 8px 0 2px; overflow: hidden; }
+#guardLine { font-size: 12px; line-height: 1.3; color: var(--dim); margin: 0 0 6px; overflow-wrap: anywhere; }
+#handle button { min-height: 36px; font-size: var(--handle); }
+#sword #plus { color: var(--dim); font-size: 22px; width: auto; }
+/* a word opened AT the word: its information one step deeper and one size smaller, in the flow */
+.unfold { margin: 0 0 8px var(--step); cursor: pointer; }
+.unfold .full { font-size: var(--unfoldFull); line-height: 1.3; overflow-wrap: anywhere; margin: 0 0 3px; }
+.unfold .line { font-size: var(--unfoldLine); line-height: 1.35; color: var(--dim); overflow-wrap: anywhere; }
+/* the hold: the word lifts; the drag: it follows the finger, its place stays dim */
+#sword .held, #meSky .held { opacity: .55; }
+#sword .lifted, #meSky .lifted { opacity: .3; }
+#ghost { position: fixed; z-index: 9; pointer-events: none; white-space: nowrap; color: var(--ink); margin: 0; }
+#ghost.gold { color: var(--gold); }
+#handle li { will-change: auto; }
+/* an edit in place: the word itself becomes text, its line under it */
+.editor { margin: 2px 0 8px; }
+.editor input { font-size: inherit; padding: 2px 0; }
+.editor .edWord { font-size: var(--handle); }
+.editor .edWord.struck { font-size: var(--blade); }
+.editor .edWord.gold { font-family: 'Dogica', ui-monospace, monospace; color: var(--gold); font-size: 16px; }
+.editor textarea { font-size: var(--unfoldFull); margin-left: var(--step); width: calc(100% - var(--step)); }
+.editor .line { font-size: var(--unfoldLine); color: var(--dim); margin-left: var(--step); }
+
 /* the swipe: the word follows the thumb; the space it uncovers shows what letting go will do */
 #swipe { position: fixed; z-index: 9; pointer-events: none; color: var(--dim); display: flex; flex-direction: column; gap: 4px; }
 #swipe.past { color: var(--ink); }
 #swipe svg { display: block; width: 21px; height: 21px; shape-rendering: crispEdges; }
 #swipe .cue { margin: 0; color: inherit; }
-#meEmpty { flex: 0 0 auto; color: var(--dim); font-size: 13px; line-height: 1.35; margin: 2px 0 6px; }
-#meEmpty button { min-height: 0; min-width: 0; padding: 0; color: var(--ink); }
-#blade button { min-height: 30px; font-size: var(--blade); text-decoration: line-through; text-decoration-thickness: 1px; }
-#guard { font-family: 'Dogica', ui-monospace, monospace; color: var(--gold); line-height: 1.3; padding: 8px 2px 2px; overflow: hidden; }
-#guardLine { font-size: 12px; line-height: 1.3; color: var(--dim); margin: 0 0 6px; overflow-wrap: anywhere; }
-#handle button { min-height: 36px; font-size: var(--handle); }
-#sword #plus { color: var(--dim); font-size: 22px; }
-#meSkyCol { min-width: 0; padding-top: 4px; }
+
+/* the seams: his name is the border */
+.seam { touch-action: none; -webkit-user-select: none; user-select: none; display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 0; }
+.seam:focus-visible { outline: 1px dotted var(--dim); outline-offset: -2px; }
+.seam svg { display: block; flex: 0 0 auto; shape-rendering: crispEdges; }
+#vseam { cursor: col-resize; flex-direction: column; gap: var(--nameGap); overflow: hidden; }
+#hseam { cursor: row-resize; flex-direction: row; gap: var(--nameGap); overflow: hidden; }
+.seam .sp { flex: 0 0 var(--nameSpace); width: var(--nameSpace); height: var(--nameSpace); }
+
+#meRight { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr);
+           grid-template-rows: var(--hy, 42%) var(--seam) minmax(0, 1fr); }
+#meSkyCol { min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; padding-top: 4px; }
 #meCount { text-align: center; margin: 4px 0 0; }
 #meSky { display: block; width: 100%; height: auto; color: var(--ink); font-family: 'W95FA', monospace; }
-#meCorner { flex: 0 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) var(--orv-w); gap: 8px; align-items: end; padding-top: 6px; }
-#meLeft { min-width: 0; }
-#meSay { max-height: 22vh; overflow-y: auto; overflow-wrap: anywhere; margin: 0 0 4px; }
+#meSky .over text { font-weight: 700; }
+#meCorner { min-width: 0; min-height: 0; display: flex; flex-direction: column; padding-top: 2px; }
+#meSay { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-wrap: anywhere; margin: 0 0 4px; }
 #meSay.stage { color: var(--dim); font-style: italic; }
+#meKey { flex: 0 0 auto; }
 #meKey p { color: var(--dim); }
-#meNote { font-size: 13px; }
-#menu { position: fixed; z-index: 10; max-width: calc(100vw - 2 * var(--pad)); padding: 6px 10px;
-        background: var(--ground); box-shadow: 0 0 22px 18px var(--ground);
-        display: flex; flex-direction: column; align-items: flex-start; }
-#menu.form { width: min(320px, calc(100vw - 2 * var(--pad))); align-items: stretch; }
-#menu .cue { margin: 0 0 2px; }
-#menu .line { color: var(--dim); font-size: 13px; max-width: 230px; overflow-wrap: anywhere; margin: 0 0 4px; }
-#menu.info { width: calc(100vw - 2 * var(--pad)); }          /* the information: a full line of plain words under the word */
-#menu .full { font-size: 15px; max-width: 300px; overflow-wrap: anywhere; margin: 0 0 6px; }
-#menu .row { gap: 0 4px; }
-#menu button { min-height: 40px; }
-#menu .row .quiet { color: var(--dim); padding: 0 6px 0 0; min-width: 0; }
+#meWords { flex: 0 0 auto; }
+#meFoot { flex: 0 0 auto; display: flex; align-items: flex-end; gap: 6px; min-width: 0; }
+#meNote { flex: 1 1 auto; min-width: 0; font-size: 13px; overflow-wrap: anywhere; padding-bottom: 4px; }
+#meOrvSeat { flex: 0 0 auto; }
+#orv:active { transform: translateY(2px); }                     /* Day One's press: he dips when tapped */
 </style>
 </head>
 <body>
@@ -265,15 +305,16 @@ summary::-webkit-details-marker { display: none; }
 </main>
 
 <main id="me" hidden aria-label="your kingdom">
-  <header id="meTop">
+  <header id="meTop" title="pull down for projects · keep · restore">
     <p class="cue" id="meName"></p>
-    <span id="meShelf">
-      <button type="button" id="meProjects" class="quiet" aria-expanded="false">projects</button>
-      <button type="button" id="meKeep" class="quiet">keep</button>
-      <button type="button" id="meRestore" class="quiet">restore</button>
-      <input type="file" id="meFile" accept=".json,application/json" hidden>
-    </span>
+    <button type="button" id="meNudge" class="quiet" hidden>keep today?</button>
   </header>
+  <div id="meShelf" hidden>
+    <button type="button" id="meProjects" class="quiet" aria-expanded="false">projects</button>
+    <button type="button" id="meKeep" class="quiet">keep</button>
+    <button type="button" id="meRestore" class="quiet">restore</button>
+    <input type="file" id="meFile" accept=".json,application/json" hidden>
+  </div>
   <div id="meShelfList" hidden></div>
   <p id="meEmpty" hidden>Your kingdom lives in Safari on this phone. If this is empty, open the page in Safari, or tap <button type="button" id="meEmptyRestore" class="word">restore</button>.</p>
   <div id="meMid">
@@ -281,28 +322,30 @@ summary::-webkit-details-marker { display: none; }
       <ol id="blade" aria-label="the blade: done"></ol>
       <button type="button" id="guard" aria-label="the one thing"></button>
       <p id="guardLine"></p>
+      <div id="guardMore"></div>
       <ol id="handle" aria-label="the handle: open"></ol>
       <button type="button" id="plus" aria-label="add a task by hand">+</button>
     </div>
-    <div id="meSkyCol"><svg id="meSky" role="group" aria-label="the constellation of your tasks"></svg><p class="cue" id="meCount"></p></div>
-  </div>
-  <div id="meCorner">
-    <div id="meLeft">
-      <p id="meSay" aria-live="polite"></p>
-      <div id="meKey" hidden>
-        <p id="meKeyLine"></p>
-        <div class="row" style="flex-wrap:nowrap">
-          <input id="meKeyIn" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Orv's key">
-          <button type="button" id="meKeySave" class="word">keep</button>
+    <div id="vseam" class="seam" role="separator" aria-orientation="vertical" tabindex="0" aria-label="High King Leevzo — drag to move this border; double-tap to put it back"></div>
+    <div id="meRight">
+      <div id="meSkyCol"><svg id="meSky" role="group" aria-label="the constellation of your tasks"></svg><p class="cue" id="meCount"></p></div>
+      <div id="hseam" class="seam" role="separator" aria-orientation="horizontal" tabindex="0" aria-label="The Lucky — drag to move this border; double-tap to put it back"></div>
+      <div id="meCorner">
+        <p id="meSay" aria-live="polite"></p>
+        <div id="meKey" hidden>
+          <p id="meKeyLine"></p>
+          <div class="row" style="flex-wrap:nowrap">
+            <input id="meKeyIn" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Orv's key">
+            <button type="button" id="meKeySave" class="word">keep</button>
+          </div>
         </div>
+        <textarea id="meWords" rows="2" placeholder="tell orv" aria-label="your words to Orv — tap Orv to send"></textarea>
+        <div id="meFoot"><span id="meNote" class="dim"></span><div id="meOrvSeat"></div></div>
       </div>
-      <textarea id="meWords" rows="2" placeholder="tell orv" aria-label="your words to Orv"></textarea>
-      <div class="row"><button type="button" id="meSpeak" class="word">speak</button><span id="meNote" class="dim"></span></div>
     </div>
-    <div id="meOrvSeat"></div>
   </div>
-  <div id="menu" role="dialog" aria-label="this word" hidden></div>
   <div id="swipe" aria-hidden="true" hidden></div>
+  <p id="ghost" aria-hidden="true" hidden></p>
 </main>
 
 <script src="./palette333.js"></script>
@@ -315,8 +358,14 @@ const KNOBS = {
   pad: 16,                              // side gutter, px
   scriptPx: 15,                         // Courier Prime size on the phone
   orvSprite: 'orv/orv2.json',           // the one Orv (41×50, four idle poses); never redrawn here
-  orvScale: 2,                          // integer scale only: 82×100
-  orvBeat: [1400, 520, 130, 190],       // ms each idle pose holds (the ruled BEAT)
+  orvScale: 2,                          // integer scale only
+  orvBeat: [1400, 520, 130, 190],       // ms each idle pose holds: his own clock (OrvSummon2.tsx BEAT — the breath held, then the summon)
+  summon: {                             // THE SUMMON RIG, ported from components/world/Summon.tsx (his 09-13 ruling)
+    mx: 5, my: 4,                       // art pixels of room for the lean (each side) and the lift (above), as the original left
+    fps: 12,                            // twelve frames a second, on purpose: smooth motion on a pixel sprite reads as a smooth sprite
+    energy: [0.34, 0.42],               // idle · listening (OrvSummon2's two moods)
+    hold: 2                             // the pose he holds while he listens or reads: the raised claw, its sparks
+  },
   spriteMaxScale: 8,                    // the inkling's sprite: the biggest integer scale that fits, up to this
   freeDoors: ['groq', 'gemini'],        // doors with a free tier; every other door waits for the word
   password: 'Cha-ching',                // the literal word that opens a paid door, once per ask (§8)
@@ -336,10 +385,30 @@ const KNOBS = {
     hello: '(Orv sits in the corner, one eye on you.)',
     keyLine: 'Orv needs a key — paste it here',
     sky: { cols: 3, dx: 58, dy: 66, pad: 22, arc: [0, 8, 0], r: 6, ring: 11, mark: 9, hit: 22, labelDy: 20, labelMax: 9, font: 13 },
-    guardPx: [32, 24, 16],              // the crossguard: the largest of these that fits (Dogica is pixels: multiples of 8)
+    guardPx: [32, 24, 16, 8],           // the crossguard: the largest of these that fits whole on one line (Dogica is pixels: multiples of 8)
     bladePx: 14, handlePx: 16,          // blade and handle words; both below the crossguard's smallest
     swipeLock: 10,                      // px of movement before a drag is a swipe (mostly sideways) or a scroll (mostly up/down)
     swipeAt: 72,                        // px past which letting go acts; short of it the word goes home in one step
+    holdMs: 320,                        // the Sword's hold (_engine.js THE REWRITE): still this long and the word lifts
+    holdSlop: 8,                        // px a held word may wander before it is a drag (the Sword's own 8)
+    unfold: { step: 14, full: 13, line: 12 },   // a word opened at the word: one step deeper (the Sword's .block 14px), one size smaller
+    seams: {                            // the two borders he drags (Day One's barrier, turned on its side for the first)
+      w: 22,                            // px: the thickness of a seam (the letters live in it)
+      v: 0.48, h: 0.42,                 // defaults: the sword's share of the width · the sky's share of the right side
+      vMin: 96, rightMin: 150,          // px the sword and the right side keep at the least
+      hMin: 64, cornerMin: 190,         // px the sky and Orv's corner keep at the least
+      moved: 3,                         // px of travel before a press on a seam is a drag, not a tap
+      dbl: 320,                         // ms between two taps that put a seam back where it began
+      nudge: 8                          // px an arrow key moves a focused seam
+    },
+    name: {                             // his name, in the Sword's own pixel face (5×7, bold), coloured letter by letter
+      v: 'HIGH KING LEEVZO', h: 'THE LUCKY',
+      scale: 2, gap: 4, space: 10,      // px: integer scale of a letter, the gap between letters, a word space
+      step: 5,                          // the next letter's hue is this many places round the wheel (coprime with 14: every hue comes)
+      floor: 3.0                        // contrast on the grey ground; a hue short of it is lifted in lightness, never darkened
+    },
+    wheel: ['#FF7A12', '#FF3D12', '#FF1239', '#FF12A1', '#FA12FF', '#9212FF', '#2A12FF',   // THE 23's WHEEL (_palette.part.js),
+            '#126EFF', '#12D6FF', '#12FFC2', '#12FF5A', '#22FF12', '#8AFF12', '#F2FF12'],   // never the STAR's darks (the browns)
     glyphs: {                           // 7×7 pixel glyphs (the pixel faces carry no ✓ ✕ ↺): '#' = ink
       done:    ['......#', '.....##', '#...##.', '##.##..', '.###...', '..#....', '.......'],
       delete:  ['#.....#', '.#...#.', '..#.#..', '...#...', '..#.#..', '.#...#.', '#.....#'],
@@ -450,7 +519,7 @@ function adopt(v) {
 
 /* ═══ OPEN A PROJECT ═══ */
 function enter(p) {
-  closeMenu(); showMode(false);
+  meLetGo(); showMode(false);
   if (S.box) S.box.stop();
   P = p;
   S.inv = get('invite', null); S.me = get('me', { n: 0, name: '', color: INK.INKS[0], joined: false });
@@ -672,23 +741,96 @@ async function askOrv() {
 }
 const aiMark = l => { const m = l.door + (l.model ? ':' + l.model : ''); return m.length <= 80 && /^[^:\s]+(:\S+)?$/.test(m) ? m : l.door; };
 
-/* Orv himself: the one sprite, four idle poses, integer scale, never stretched or redrawn */
+/* ═══ ORV, SUMMONED — the King's own idle rig, ported whole from Monomyth components/world/Summon.tsx
+   as focus/orv/OrvSummon2.tsx drives it (his ruling 2026-09-13: "give him the ACTUAL SUMMON MECHANIC").
+     THE RIG     each pose is cut into three rigid chunks at two rows found in his own silhouette: the
+                 NECK (the narrowest row after the head's widest, in the top third) and the WAIST (the
+                 narrowest row between the neck and the feet). Measured per pose, so a pose re-rigs itself.
+     THE BREATH  the torso is STRETCHED, not moved — drawn `rise` rows taller, pinned at the waist — so the
+                 feet stay planted and the head rides up on top. Bobbing translates; breathing stretches.
+     THE DRIVER  mostly still: a spring pulls the lean back to centre, and every few seconds a random shove.
+                 The head leans furthest, the legs least. One clock, kept across poses, so a new pose
+                 continues the same breath. TWELVE frames a second, as the original ran.
+     THE POSES   orv/orv2.json, the one Orv (never redrawn): pose f holds orvBeat[f] ms. Poses 2 and 3 carry
+                 the sparks off the raised claw as his own pixels ('!' '@'); nothing here draws a spark.
+                 Every pose stands on the same row (THE FEET ON THE GROUND, 09-15).
+     LISTENING   words in the box, or Orv reading: he holds pose 2, a little livelier (OrvSummon2's mood).
+     Reduced motion: one still frame. Tap = send (Day One's portal: words in the box go; none, the box opens). */
+const ORV = { listening: () => false };
+function orvRig(rows) {
+  const h = rows.length;
+  const width = rows.map(r => { let lo = 1e9, hi = -1; for (let x = 0; x < r.length; x++) if (r[x] !== '.') { if (x < lo) lo = x; if (x > hi) hi = x; } return hi < 0 ? 0 : hi - lo + 1; });
+  const top = Math.max(1, Math.round(h * 0.34));
+  let headMax = 0, headAt = 0;
+  for (let y = 0; y < top; y++) if (width[y] > headMax) { headMax = width[y]; headAt = y; }
+  let neckY = headAt + 1, narrow = 1e9;
+  for (let y = headAt + 1; y < Math.round(h * 0.5); y++) if (width[y] > 0 && width[y] < narrow) { narrow = width[y]; neckY = y; }
+  const footTop = h - Math.max(3, Math.round(h * 0.13));
+  let waistY = Math.round((neckY + h) / 2); narrow = 1e9;
+  for (let y = neckY + 2; y < footTop - 2; y++) if (width[y] > 0 && width[y] < narrow) { narrow = width[y]; waistY = y; }
+  return { neckY, footTop, legTop: Math.max(neckY + 2, Math.min(waistY, footTop - 2)) };
+}
 async function orvBoot() {
-  const cv = $('orvCv'), cx = cv.getContext('2d');
+  const cv = $('orvCv');
   let O;
   try { O = await (await fetch(KNOBS.orvSprite)).json(); } catch (e) { return; }
-  cv.width = O.w; cv.height = O.h;
-  cv.style.width = O.w * KNOBS.orvScale + 'px'; cv.style.height = O.h * KNOBS.orvScale + 'px';
-  const paint = f => {
-    cx.clearRect(0, 0, O.w, O.h);
-    const rows = O.frames[f];
-    for (let y = 0; y < O.h; y++) for (let x = 0; x < O.w; x++) { const h = O.pal[rows[y][x]]; if (h) { cx.fillStyle = h; cx.fillRect(x, y, 1, 1); } }
-  };
+  const R = KNOBS.summon, S = KNOBS.orvScale, w = O.w, h = O.h, BEAT = KNOBS.orvBeat;
+  const lowest = rows => { for (let y = rows.length - 1; y >= 0; y--) if (/[^.]/.test(rows[y])) return y; return rows.length - 1; };
+  const floor = Math.max.apply(null, O.frames.map(lowest));
+  const poses = O.frames.map(raw => {
+    const drop = floor - lowest(raw);                                 // the feet on the ground
+    const rows = drop > 0 ? Array(drop).fill('.'.repeat(w)).concat(raw.slice(0, raw.length - drop)) : raw;
+    const src = document.createElement('canvas'); src.width = w; src.height = h;   // baked once, one art pixel a canvas pixel
+    const sx = src.getContext('2d'), img = sx.createImageData(w, h);
+    rows.forEach((row, y) => { for (let x = 0; x < row.length; x++) {
+      const hx = O.pal[row[x]]; if (!hx) continue;
+      const n = parseInt(hx.slice(1), 16), o = (y * w + x) * 4;
+      img.data[o] = (n >> 16) & 255; img.data[o + 1] = (n >> 8) & 255; img.data[o + 2] = n & 255; img.data[o + 3] = 255;
+    } });
+    sx.putImageData(img, 0, 0);
+    return { src, rig: orvRig(rows) };
+  });
+  cv.width = (w + R.mx * 2) * S; cv.height = (h + R.my) * S;
+  cv.style.width = cv.width + 'px'; cv.style.height = cv.height + 'px';
+  document.documentElement.style.setProperty('--orv-w', cv.width + 'px'); document.documentElement.style.setProperty('--orv-h', cv.height + 'px');
+  const ctx = cv.getContext('2d'); ctx.imageSmoothingEnabled = false;
+  const d = { sx: 0, vx: 0, clk: 0, next: 2.0 };
   let f = 0;
-  paint(0);
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const beat = () => { f = (f + 1) % O.frames.length; paint(f); setTimeout(beat, KNOBS.orvBeat[f % KNOBS.orvBeat.length]); };
-  setTimeout(beat, KNOBS.orvBeat[0]);
+  const cl = (v, m) => Math.max(-m, Math.min(m, v));
+  const drive = (dt, E) => {
+    d.clk += dt;
+    const k = 5 + E * 6;
+    d.vx += -d.sx * k * dt; d.vx *= 0.89 - E * 0.07; d.sx += d.vx * dt;
+    if (d.clk > d.next) {                                             // the shove: never the same way twice
+      d.vx += (Math.random() < 0.5 ? -1 : 1) * ((0.4 + E * 0.6) + Math.random() * (2.4 + E * 2.6));
+      d.next = d.clk + (1.5 - E * 1.2) + Math.random() * (6.0 - E * 4.8);
+    }
+  };
+  const paint = (p, E) => {
+    const { src, rig } = poses[p], { neckY, legTop, footTop } = rig, bHz = 0.20 + E * 0.55;
+    const rise = Math.round((0.5 + 0.5 * Math.sin(d.clk * Math.PI * 2 * bHz)) * (2.3 + E * 1.6));
+    const swayT = Math.round(cl(d.sx * (1.6 + E * 0.9), 3 + E * 1.5));
+    const swayH = swayT + Math.round(cl(d.sx * (0.5 + E * 0.3), 1.5));
+    const swayLeg = Math.round(swayT * 0.45), X = R.mx * S, Y = R.my * S;
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    ctx.drawImage(src, 0, neckY, w, legTop - neckY, X + swayT * S, Y + neckY * S - rise * S, w * S, (legTop - neckY) * S + rise * S);   // the torso, drawn taller, pinned at the waist
+    ctx.drawImage(src, 0, legTop, w, footTop - legTop, X + swayLeg * S, Y + legTop * S, w * S, (footTop - legTop) * S);               // the legs, leaning a little
+    ctx.drawImage(src, 0, footTop, w, h - footTop, X, Y + footTop * S, w * S, (h - footTop) * S);                                      // the feet, planted
+    ctx.drawImage(src, 0, 0, w, neckY + 1, X + swayH * S, Y - rise * S, w * S, (neckY + 1) * S);                                       // the head, riding on top
+    cv.dataset.pose = String(p);
+  };
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) { paint(0, R.energy[0]); return; }
+  /* the pose clock is its own (OrvSummon2: setTimeout(BEAT[f])); a new pose is painted at once, the rig ticks at 12 fps */
+  let last = 0, timer = 0, was = null, fresh = true;
+  const arm = () => { clearTimeout(timer); timer = setTimeout(() => { f = (f + 1) % poses.length; fresh = true; arm(); }, BEAT[f % BEAT.length]); };
+  const loop = ts => {
+    const t = ts / 1000, held = ORV.listening(), E = R.energy[held ? 1 : 0];
+    if (held !== was) { was = held; if (held) clearTimeout(timer); else arm(); fresh = true; }   // speaking/listening: hold the claw, nothing more
+    if (t - last >= 1 / R.fps) { last = t; drive(1 / R.fps, E); fresh = true; }
+    if (fresh) { fresh = false; paint(held ? R.hold : f, E); }
+    requestAnimationFrame(loop);
+  };
+  requestAnimationFrame(loop);
 }
 
 /* ═══ DRAWING ═══ */
@@ -918,7 +1060,8 @@ function pasteBox() {
 /* ═══ PERSONAL MODE (§12): his own kingdom ═══════════════════════════════════════════════════════
    The ONLY ways his state changes: applyOp() on an op that checkOp() passed — from his hand (logged
    who:'k') or from Orv's JSON (logged who:'ai:<door>:<model>'). The log only ever grows. */
-const ME = { on: false, st: null, menu: null, say: null, busy: false, note: '', sky: null, swiped: 0 };
+const ME = { on: false, st: null, open: null, edit: null, say: null, busy: false, note: '', sky: null, swiped: 0 };
+ORV.listening = () => (ME.on ? ME.busy || !!$('meWords').value.trim() : asking || !!$('words').value.trim());
 const meKey = k => 'ink.me.' + k;
 function meGet(k, d) { try { const v = localStorage.getItem(meKey(k)); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }
 function mePut(k, v) {
@@ -1030,6 +1173,13 @@ function checkOp(st, op) {
       if (op.word === undefined && op.text === undefined) return 'nothing to edit';
       return (op.word !== undefined && wordBad(op.word)) || (op.text !== undefined && textBad(op.text)) || '';
     }
+    case 'move': {                                               // his hand only: a word dropped between two words
+      if (!task(op.id)) return unknown(op.id);
+      for (const k of ['after', 'before']) if (op[k] != null && (!task(op[k]) || op[k] === op.id)) return unknown(op[k]);
+      if (op.after != null && op.after === op.before) return 'that is not between two words';
+      const sim = JSON.parse(JSON.stringify(st)); applyOp(sim, normOp(op), '');
+      return loops(sim) ? 'that move would make a loop' : '';
+    }
     default: return 'unknown op ' + clip(String(op.op), 20);
   }
 }
@@ -1037,6 +1187,7 @@ function normOp(op) {                                            // only the kno
   const o = { op: op.op };
   if (op.op === 'add') { o.word = op.word.trim(); o.text = op.text.trim(); if (Array.isArray(op.after) && op.after.length) o.after = Array.from(new Set(op.after)); }
   else if (op.op === 'link') { o.a = op.a; o.b = op.b; }
+  else if (op.op === 'move') { o.id = op.id; o.after = op.after || null; o.before = op.before || null; }
   else { o.id = op.id; if (op.op === 'edit') { if (op.word !== undefined) o.word = op.word.trim(); if (op.text !== undefined) o.text = op.text.trim(); } }
   return o;
 }
@@ -1050,13 +1201,33 @@ function applyOp(st, o, at) {                                    // o has passed
   else if (o.op === 'link') { const b = st.tasks.find(x => x.id === o.b); if (!b.after.includes(o.a)) b.after.push(o.a); }
   else if (o.op === 'one') st.one = o.id;
   else if (o.op === 'edit') { if (o.word !== undefined) t.word = o.word; if (o.text !== undefined) t.text = o.text; }
+  else if (o.op === 'move') {
+    /* story order is the after-links, so a move rewrites them: whoever came after it now comes after what it
+       came after; it comes after the word above the gap; the word below the gap comes after it */
+    st.tasks.forEach(k => { const i = k.after.indexOf(t.id); if (i < 0) return;
+      k.after.splice(i, 1, ...t.after.filter(a => a !== k.id && !k.after.includes(a))); });
+    t.after = o.after ? [o.after] : [];
+    const b = o.before && st.tasks.find(x => x.id === o.before);
+    if (b) { const i = o.after ? b.after.indexOf(o.after) : -1; if (i >= 0) b.after.splice(i, 1, t.id); else if (!b.after.includes(t.id)) b.after.push(t.id); }
+  }
+}
+function loops(st) {                                             // is there a ring in the after-links?
+  const at = new Map(live(st).map(t => [t.id, t])), mark = new Map();
+  const visit = id => {
+    if (mark.get(id) === 1) return true; if (mark.get(id) === 2) return false;
+    mark.set(id, 1); const t = at.get(id);
+    if (t) for (const a of t.after) if (at.has(a) && visit(a)) return true;
+    mark.set(id, 2); return false;
+  };
+  for (const id of at.keys()) if (visit(id)) return true;
+  return false;
 }
 function runOps(st, ops) {                                       // valid ones applied in order; the rest dropped, with reasons
   const applied = [], dropped = [], at = isoMs();
   if (!Array.isArray(ops)) return { applied, dropped: [{ i: 0, reason: 'ops is not a list', op: ops }] };
   ops.forEach((op, i) => {
     if (i >= KNOBS.me.opsMax) return dropped.push({ i, reason: 'more than ' + KNOBS.me.opsMax + ' ops in one reply', op });
-    if (op && (op.op === 'delete' || op.op === 'archive')) return dropped.push({ i, reason: 'only his hand deletes or archives', op });
+    if (op && (op.op === 'delete' || op.op === 'archive' || op.op === 'move')) return dropped.push({ i, reason: 'only his hand ' + (op.op === 'move' ? 'moves a word' : 'deletes or archives'), op });
     const why = checkOp(st, op);
     if (why) return dropped.push({ i, reason: why, op });
     const o = normOp(op); applyOp(st, o, at); applied.push(o);
@@ -1206,80 +1377,98 @@ function meTake(d, model, reply) {
 /* his hand: the same checks, logged who:'k' */
 function handOp(op, what) {
   const why = checkOp(ME.st, op);
-  if (why) { if (ME.menu) { ME.menu.why = why; drawMenu(); } else meNote(why); return false; }
+  if (why) { meNote(why); return false; }
   const st = JSON.parse(JSON.stringify(ME.st)), o = normOp(op);
   applyOp(st, o, isoMs());
-  if (!mePut('state', st)) { if (ME.menu) { ME.menu.why = ME.note; drawMenu(); } else meNote(ME.note); return false; }
+  if (!mePut('state', st)) { meNote(ME.note); return false; }
   ME.st = st;
   logIt({ who: 'k', what, ops: [o] });
-  closeMenu(); meRender();
+  meRender();
   return true;
 }
-/* a TAP shows the word's information; tapping it again (or anywhere else) lets it go */
-function meTap(id, el) {
-  if (ME.menu && ME.menu.mode === 'link' && ME.menu.id) {        // "link": the star tapped now is the one it comes after
-    if (id !== ME.menu.id) handOp({ op: 'link', a: id, b: ME.menu.id }, 'link');
-    return;
-  }
-  if (ME.menu && ME.menu.mode === 'info' && ME.menu.id === id) return closeMenu();
-  openMenu(id, el, 'info');
-}
-function openMenu(id, el, mode) { ME.menu = { id, mode, at: el.getBoundingClientRect(), why: '' }; drawMenu(); }
-function closeMenu() { ME.menu = null; const m = $('menu'); if (m) { m.hidden = true; m.textContent = ''; } }
-function drawMenu() {
-  const m = ME.menu, box = $('menu');
-  if (!m) return closeMenu();
-  const t = m.id ? live(ME.st).find(x => x.id === m.id) : null;
-  if (m.id && !t) return closeMenu();
-  box.textContent = '';
-  const form = m.mode === 'add' || m.mode === 'rename';
-  box.classList.toggle('form', form);
-  box.classList.toggle('info', !form);
-  const mode = md => () => { m.mode = md; m.why = ''; drawMenu(); };
-  if (form) {
-    box.appendChild(mk('p', 'cue', m.mode === 'add' ? 'a new task' : 'edit'));
-    const w = mk('input'), l = mk('textarea');
-    w.type = 'text'; w.maxLength = KNOBS.me.wordMax; w.placeholder = 'one word'; w.value = t ? t.word : ''; w.setAttribute('aria-label', 'the word');
-    w.autocomplete = 'off'; l.rows = 2; l.maxLength = KNOBS.me.lineMax; l.placeholder = 'the line'; l.value = t ? t.text : ''; l.setAttribute('aria-label', 'the line');
-    box.append(w, l);
-    const row = mk('div', 'row'); box.appendChild(row);
-    const ok = mk('button', 'word', m.mode === 'add' ? 'add' : 'keep'), no = mk('button', 'word', 'never mind');
-    ok.type = no.type = 'button';
-    ok.addEventListener('click', () => handOp(m.mode === 'add' ? { op: 'add', word: w.value, text: l.value } : { op: 'edit', id: t.id, word: w.value, text: l.value },
-                                              m.mode === 'add' ? 'add' : 'rename'));
-    no.addEventListener('click', m.mode === 'add' ? closeMenu : mode('info'));
-    row.append(ok, no);
-    setTimeout(() => w.focus(), 0);
-  } else if (m.mode === 'link') {
-    box.appendChild(mk('p', 'line', 'tap the star ' + t.word + ' comes after'));
-    const b = mk('button', 'word', 'never mind'); b.type = 'button'; b.addEventListener('click', mode('info')); box.appendChild(b);
-  } else {                                                        // the information, in plain words
-    const all = live(ME.st), named = list => list.map(x => x.word).join(' · ');
-    const before = named(t.after.map(a => all.find(x => x.id === a)).filter(Boolean));
-    const then = named(all.filter(x => x.after.includes(t.id)));
-    box.appendChild(mk('p', 'cue', t.word + (t.done ? ' · done' : theOne(ME.st) === t ? ' · the one thing' : '')));
-    box.appendChild(mk('p', 'full', t.text));
-    if (before) box.appendChild(mk('p', 'line', 'after ' + before));
-    if (then) box.appendChild(mk('p', 'line', 'then ' + then));
-    box.appendChild(mk('p', 'line', 'made ' + when(t.at) + (t.done && t.doneAt ? ' · done ' + when(t.doneAt) : '')));
-    const row = mk('div', 'row'); box.appendChild(row);
-    const quiet = (label, fn) => { const b = mk('button', 'quiet word', label); b.type = 'button'; b.addEventListener('click', fn); row.appendChild(b); };
-    quiet('edit', mode('rename'));
-    if (!t.done && theOne(ME.st) !== t) quiet('the one thing', () => handOp({ op: 'one', id: t.id }, 'one'));
-    quiet('link', mode('link'));
-  }
-  if (m.why) box.appendChild(mk('p', 'dim', m.why));
-  box.hidden = false;
-  const pad = KNOBS.pad, W = innerWidth, H = innerHeight, bw = box.offsetWidth, bh = box.offsetHeight, r = m.at;
-  let x = r.left + r.width / 2 - bw / 2, y = form ? pad + 44 : r.bottom + 6;    // a form sits high, above the keyboard
-  if (!form && y + bh > H - pad) y = r.top - bh - 6;
-  box.style.left = Math.max(pad, Math.min(x, W - bw - pad)) + 'px';
-  box.style.top = Math.max(pad, Math.min(y, H - bh - pad)) + 'px';
-}
 
-/* ── the swipe (his hand on the sword): the word follows the thumb 1:1, sideways only. Right: done
-   (a done one: undone). Left: delete an open one, archive a done one. Short of the mark it goes home
-   in one step. The first few px decide: mostly up/down is a scroll, and the swipe lets go. ── */
+/* ── A WORD OPENS AT THE WORD (the Sword's law: sword.js tell(), Scriptorium tell.js): TAP a word and its
+   information unfolds right under it, one step deeper and one size smaller, and everything below moves
+   down to make room; TAP it again and it folds, and everything moves back. One word open at a time; the
+   word tapped stays where it was under the finger. A star tapped in the sky opens its word in the sword. ── */
+function unfold(t, lineShown) {
+  const all = live(ME.st), named = list => list.map(x => x.word).join(' · ');
+  const before = named(t.after.map(a => all.find(x => x.id === a)).filter(Boolean));
+  const then = named(all.filter(x => x.after.includes(t.id)));
+  const u = mk('div', 'unfold');
+  if (!lineShown) u.appendChild(mk('p', 'full', t.text));
+  if (before) u.appendChild(mk('p', 'line', 'after ' + before));
+  if (then) u.appendChild(mk('p', 'line', 'then ' + then));
+  u.appendChild(mk('p', 'line', 'made ' + when(t.at) + (t.done && t.doneAt ? ' · done ' + when(t.doneAt) : '')));
+  u.addEventListener('click', () => meTap(t.id));
+  return u;
+}
+function meTap(id, fromSky) {
+  if (ME.edit) return;
+  const at = () => document.querySelector('#sword [data-id="' + CSS.escape(id) + '"]');
+  const was = at(), top = was && !fromSky ? was.getBoundingClientRect().top : null;
+  ME.open = ME.open === id ? null : id;
+  renderSword();
+  const now = at();
+  if (now && top != null) $('sword').scrollTop += now.getBoundingClientRect().top - top;
+  else if (now && ME.open) (now.closest('li') || now).scrollIntoView({ block: 'nearest' });
+}
+function meLetGo() { ME.open = null; ME.edit = null; swHome(); $('meShelf').hidden = true; $('meShelfList').hidden = true; }
+
+/* ── HOLD a word without moving: the word itself becomes text, its line under it. Enter (or a tap anywhere
+   else) keeps it, through the same checks, logged; Escape lets it go. The + opens an empty one at the foot. ── */
+function editBegin(id) {
+  if (ME.edit) return;
+  ME.open = null; ME.edit = { id, why: '', word: null, line: null, focus: 'word' };
+  renderSword();
+}
+function editorFor(t, cls) {
+  const E = ME.edit, box = mk('div', 'editor'), why = mk('p', 'line', E.why || '');
+  const w = mk('input', 'edWord' + (cls ? ' ' + cls : '')), l = mk('textarea', 'edLine');
+  box.id = 'editor';
+  w.type = 'text'; w.maxLength = KNOBS.me.wordMax; w.placeholder = 'one word'; w.autocomplete = 'off'; w.spellcheck = false;
+  w.setAttribute('aria-label', 'the word'); w.value = E.word != null ? E.word : t ? t.word : '';
+  l.rows = 2; l.maxLength = KNOBS.me.lineMax; l.placeholder = 'the line'; l.setAttribute('aria-label', 'the line');
+  l.value = E.line != null ? E.line : t ? t.text : '';
+  const key = e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); editCommit(); }
+    else if (e.key === 'Escape') { e.preventDefault(); editCancel(); }
+  };
+  [w, l].forEach(x => x.addEventListener('keydown', key));
+  w.addEventListener('input', () => { E.word = w.value; }); l.addEventListener('input', () => { E.line = l.value; });
+  w.addEventListener('focus', () => { E.focus = 'word'; }); l.addEventListener('focus', () => { E.focus = 'line'; });
+  why.hidden = !E.why;
+  box.append(w, l, why);
+  return box;
+}
+function editCommit() {
+  const E = ME.edit; if (!E) return true;
+  const ed = $('editor'), t = E.id ? live(ME.st).find(x => x.id === E.id) : null;
+  const word = ed ? ed.querySelector('.edWord').value : E.word || '', line = ed ? ed.querySelector('.edLine').value : E.line || '';
+  if ((E.id && !t) || (!t && !word.trim() && !line.trim()) || (t && word.trim() === t.word && line.trim() === t.text)) { editCancel(); return true; }
+  const op = t ? { op: 'edit', id: t.id } : { op: 'add', word, text: line };
+  if (t) { if (word.trim() !== t.word) op.word = word; if (line.trim() !== t.text) op.text = line; }
+  const why = checkOp(ME.st, op);
+  if (why) {
+    E.why = why; const p = ed && ed.querySelector('p.line'); if (p) { p.textContent = why; p.hidden = false; }
+    return false;
+  }
+  ME.edit = null;
+  handOp(op, t ? 'edit' : 'add');
+  return true;
+}
+function editCancel() { ME.edit = null; renderSword(); }
+
+/* ── HIS HAND ON A WORD (or a star). The first few px and the first 320 ms decide:
+     moved sideways first   = a SWIPE: the word follows the thumb 1:1, sideways only. Right: done (a done
+                               one: undone). Left: delete an open one, archive a done one. Short of the
+                               mark it goes home in one step. Mostly up/down first is a scroll: it lets go.
+     still for 320 ms       = HELD (the Sword's own hold, _engine.js THE REWRITE): let go there = edit in
+                               place; move = DRAG: the word follows the finger 1:1 to where it lands:
+                               on the crossguard = THE ONE THING · between two words = it moves there in
+                               story order · on a star = it comes after that star. A star dragged onto a
+                               star: the same — the dragged one comes after the one it lands on.
+     a quick press and lift = a TAP (the click): open / fold at the word. ── */
 let SW = null;
 function swipeFor(t, dir) {
   if (!t) return null;
@@ -1314,48 +1503,118 @@ function swDraw() {
   else { g.style.right = (innerWidth - r.right + 4) + 'px'; g.style.left = ''; }
 }
 function swHome() {
-  if (SW && SW.el) SW.el.style.transform = '';
+  if (SW) {
+    clearTimeout(SW.hold);
+    if (SW.el) { SW.el.style.transform = ''; SW.el.classList.remove('held', 'lifted'); }
+    (SW.rows || []).forEach(r => { r.li.style.transform = ''; });
+  }
+  document.querySelectorAll('#meSky .over').forEach(n => n.classList.remove('over'));
   const g = $('swipe'); g.hidden = true; g.classList.remove('past');
+  const gh = $('ghost'); gh.hidden = true; gh.style.transform = ''; gh.classList.remove('gold');
   SW = null;
 }
 function swDown(e) {
-  if (!ME.on || SW || (e.pointerType === 'mouse' && e.button !== 0)) return;
-  const el = e.target.closest && e.target.closest('#sword [data-id]');
-  if (!el || !el.dataset.id) return;
-  SW = { el, id: el.dataset.id, pid: e.pointerId, x: e.clientX, y: e.clientY, dx: 0, mode: '', r: null };
+  if (!ME.on || SW || ME.edit || PULL || SEAM || (e.pointerType === 'mouse' && e.button !== 0)) return;
+  const el = e.target.closest && (e.target.closest('#sword [data-id]') || e.target.closest('#meSky [data-id]'));
+  if (!el || !el.getAttribute('data-id')) return;
+  SW = { el, id: el.getAttribute('data-id'), sky: !!el.closest('#meSky'), pid: e.pointerId, x: e.clientX, y: e.clientY,
+         dx: 0, dy: 0, mode: '', r: null, hold: 0, target: null };
+  SW.hold = setTimeout(swHold, KNOBS.me.holdMs);
+}
+function swHold() {
+  if (!SW || SW.mode) return;
+  SW.mode = 'held'; SW.el.classList.add('held');
+  try { if (navigator.vibrate) navigator.vibrate(12); } catch (e) { /* no buzz on this glass */ }
 }
 function swMove(e) {
   if (!SW || e.pointerId !== SW.pid) return;
-  const dx = e.clientX - SW.x, dy = e.clientY - SW.y;
+  const dx = e.clientX - SW.x, dy = e.clientY - SW.y, far = Math.hypot(dx, dy);
   if (!SW.mode) {
-    if (Math.hypot(dx, dy) < KNOBS.me.swipeLock) return;
-    if (Math.abs(dy) >= Math.abs(dx)) return swHome();          // a scroll: the swipe lets go
+    if (far < KNOBS.me.swipeLock) return;
+    clearTimeout(SW.hold);
+    if (SW.sky || Math.abs(dy) >= Math.abs(dx)) return swHome();   // a scroll: the hand lets go
     SW.mode = 'swipe'; SW.r = SW.el.getBoundingClientRect();
     try { SW.el.setPointerCapture(e.pointerId); } catch (err) { /* the move events still come */ }
-    if (ME.menu) closeMenu();
   }
+  if (SW.mode === 'held') { if (far < KNOBS.me.holdSlop) return; dragBegin(); }
   if (e.cancelable) e.preventDefault();
-  SW.dx = dx; swDraw();
+  SW.dx = dx; SW.dy = dy;
+  if (SW.mode === 'swipe') swDraw(); else dragDraw(e.clientX, e.clientY);
 }
 function swUp(e) {
   if (!SW || e.pointerId !== SW.pid) return;
   const s = SW; swHome();
-  if (s.mode !== 'swipe' || e.type === 'pointercancel') return;
-  ME.swiped = Date.now();                                        // the click that follows a swipe is not a tap
+  if (e.type === 'pointercancel' || !s.mode) return;              // undecided: the click that follows is a tap
+  ME.swiped = Date.now();                                        // the click after a hold, a swipe or a drag is not a tap
+  if (s.mode === 'held') return editBegin(s.id);
+  if (s.mode === 'drag') return dragDrop(s, s.target);
   if (Math.abs(s.dx) < KNOBS.me.swipeAt) return;
   const a = swipeFor(live(ME.st).find(x => x.id === s.id), s.dx > 0 ? 1 : -1);
   if (a) handOp({ op: a.op, id: s.id }, a.what);
+}
+function dragBegin() {
+  const s = SW, t = live(ME.st).find(x => x.id === s.id), g = $('ghost');
+  s.mode = 'drag'; s.el.classList.remove('held'); s.el.classList.add('lifted');
+  const src = s.sky ? s.el.querySelector('text') || s.el : s.el, r = src.getBoundingClientRect(), cs = getComputedStyle(src);
+  g.textContent = t ? t.word : '';
+  g.style.font = s.sky ? KNOBS.me.handlePx + 'px W95FA, ui-monospace, monospace' : cs.font;
+  g.style.letterSpacing = s.sky ? '' : cs.letterSpacing;
+  g.style.textDecoration = s.sky ? 'none' : cs.textDecorationLine;
+  g.style.color = s.sky ? '' : cs.color;
+  g.style.left = r.left + 'px'; g.style.top = r.top + 'px'; g.style.lineHeight = r.height + 'px';
+  g.hidden = false;
+  /* the places it can land, measured once as it lifts (the words step aside by transform, so these hold) */
+  s.rows = Array.from($('handle').children).filter(li => li.dataset.row && li.dataset.row !== s.id)
+    .map(li => ({ li, id: li.dataset.row, r: li.getBoundingClientRect() }));
+  s.sw = $('sword').getBoundingClientRect();
+  s.gap = Math.max(24, Math.round((s.rows[0] && s.rows[0].r.height) || r.height));
+}
+function dragDraw(x, y) {
+  const s = SW, g = $('ghost'), hit = document.elementFromPoint(x, y), on = sel => hit && hit.closest && hit.closest(sel);
+  g.style.transform = 'translate(' + s.dx + 'px,' + s.dy + 'px)';      // 1:1 with the finger
+  let t = null;
+  if (on('#guard') || on('#guardLine') || on('#guardMore')) { if ($('guard').dataset.id !== s.id) t = { kind: 'one' }; }
+  else { const star = on('#meSky [data-id]'); if (star && star.getAttribute('data-id') !== s.id) t = { kind: 'link', a: star.getAttribute('data-id'), el: star }; }
+  if (!t && s.rows.length && x >= s.sw.left && x <= s.sw.right) {
+    const first = s.rows[0].r, last = s.rows[s.rows.length - 1].r;
+    if (y >= first.top - s.gap && y <= last.bottom + s.gap) {
+      let i = s.rows.findIndex(row => y < row.r.top + row.r.height / 2);
+      t = { kind: 'move', i: i < 0 ? s.rows.length : i };
+    }
+  }
+  g.classList.toggle('gold', !!t && t.kind === 'one');                // over the crossguard it wears the gold
+  document.querySelectorAll('#meSky .over').forEach(n => { if (!t || t.el !== n) n.classList.remove('over'); });
+  if (t && t.kind === 'link') t.el.classList.add('over');
+  s.rows.forEach((row, j) => { row.li.style.transform = t && t.kind === 'move' && j >= t.i ? 'translateY(' + s.gap + 'px)' : ''; });
+  s.target = t;
+}
+function dragDrop(s, t) {
+  if (!t) return;
+  if (t.kind === 'one') return handOp({ op: 'one', id: s.id }, 'one');
+  if (t.kind === 'link') return handOp({ op: 'link', a: t.a, b: s.id }, 'link');
+  /* the gap between two words of the handle, read as neighbours in story order */
+  const order = storyOrder(ME.st).map(x => x.id), rest = order.filter(id => id !== s.id), k = order.indexOf(s.id);
+  let before = t.i < s.rows.length ? s.rows[t.i].id : null, after;
+  if (before) { const j = rest.indexOf(before); after = j > 0 ? rest[j - 1] : null; }
+  else { after = s.rows[s.rows.length - 1].id; before = rest[rest.indexOf(after) + 1] || null; }
+  if (k >= 0 && (order[k - 1] || null) === after && (order[k + 1] || null) === before) return;   // it is already there
+  handOp({ op: 'move', id: s.id, after, before }, 'move');
 }
 
 /* ── drawing ── */
 function meWords(ol, list, cls) {
   ol.textContent = '';
   list.forEach(t => {
-    const li = mk('li'), b = mk('button', cls, t.word);
-    b.type = 'button'; b.dataset.id = t.id; b.title = t.text;
+    const li = mk('li'); li.dataset.row = t.id;
+    if (ME.edit && ME.edit.id === t.id) { li.appendChild(editorFor(t, cls)); ol.appendChild(li); return; }
+    const b = mk('button', cls, t.word);
+    b.type = 'button'; b.dataset.id = t.id;
     b.setAttribute('aria-label', t.word + ' — ' + t.text + (t.done ? ', done' : ''));
-    b.addEventListener('click', () => meTap(t.id, b));
-    li.appendChild(b); ol.appendChild(li);
+    b.setAttribute('aria-expanded', String(ME.open === t.id));
+    b.addEventListener('click', () => meTap(t.id));
+    li.appendChild(b);
+    if (ME.open === t.id) li.appendChild(unfold(t));
+    ol.appendChild(li);
   });
 }
 function fitGuard() {
@@ -1363,6 +1622,30 @@ function fitGuard() {
   g.style.whiteSpace = 'nowrap';
   for (const px of KNOBS.me.guardPx) { g.style.fontSize = px + 'px'; if (g.scrollWidth <= g.clientWidth) break; }
   if (g.scrollWidth > g.clientWidth) g.style.whiteSpace = 'normal';
+}
+function renderSword() {
+  const st = ME.st, one = theOne(st), order = storyOrder(st), done = order.filter(t => t.done), E = ME.edit;
+  if (E && E.id && !live(st).some(t => t.id === E.id)) ME.edit = null;              // Orv's ops took it away
+  if (ME.open && !live(st).some(t => t.id === ME.open)) ME.open = null;
+  const at = t => t.doneAt || '';
+  meWords($('blade'), done.slice().sort((a, b) => (at(a) < at(b) ? -1 : at(a) > at(b) ? 1 : nOf(a.id) - nOf(b.id))), 'struck');
+  meWords($('handle'), order.filter(t => !t.done && t !== one), '');
+  if (ME.edit && ME.edit.id === null) { const li = mk('li'); li.appendChild(editorFor(null, '')); $('handle').appendChild(li); }
+  const g = $('guard'), more = $('guardMore'), mine = !!(ME.edit && one && ME.edit.id === one.id);
+  g.hidden = !one || mine; g.textContent = one ? one.word : ''; g.dataset.id = one ? one.id : '';
+  g.setAttribute('aria-label', one ? 'the one thing: ' + one.word + ' — ' + one.text : 'the one thing');
+  g.setAttribute('aria-expanded', String(!!one && ME.open === one.id));
+  $('guardLine').hidden = mine;
+  $('guardLine').textContent = one ? one.text : order.length ? 'every task is done' : 'tell Orv what the day holds, or tap +';
+  more.textContent = '';
+  if (mine) more.appendChild(editorFor(one, 'gold'));
+  else if (one && ME.open === one.id) more.appendChild(unfold(one, true));
+  $('plus').hidden = !!(ME.edit && ME.edit.id === null);
+  fitGuard();
+  if (ME.edit) {                                                 // the editor keeps the finger's place across a redraw
+    const f = document.querySelector('#editor ' + (ME.edit.focus === 'line' ? '.edLine' : '.edWord'));
+    if (f && document.activeElement !== f) { f.focus(); try { f.setSelectionRange(f.value.length, f.value.length); } catch (e) { /* not text */ } }
+  }
 }
 const SVGNS = 'http://www.w3.org/2000/svg';
 function drawMeSky(order, one) {
@@ -1377,6 +1660,7 @@ function drawMeSky(order, one) {
       if ((c.getAttribute('stroke') || '').toLowerCase() === gold) c.remove();              // INK rings its own first open star
       else if ((c.getAttribute('fill') || '').toLowerCase() === gold) c.setAttribute('fill', look.ink);   // his ink: the gold is the crossguard's alone
     });
+    svg.querySelectorAll('title').forEach(n => n.remove());       // no floating notes: the word opens in the sword
     const s = one && INK.layout(tasks).stars.find(x => x.id === one.id), g = s && svg.querySelector('[data-id="' + one.id + '"]');
     if (g) {
       const ring = document.createElementNS(SVGNS, 'circle');
@@ -1391,24 +1675,158 @@ function meRender() {
   $('meName').textContent = KNOBS.me.title;
   $('meCount').textContent = order.length ? done.length + ' of ' + order.length + ' done' : '';
   $('meEmpty').hidden = !isEmpty(st);                            // opened empty: say where the kingdom lives
-  $('meKeep').textContent = !isEmpty(st) && meGet('kept', '') !== today() ? 'keep today?' : 'keep';
-  const at = t => t.doneAt || '';
-  meWords($('blade'), done.slice().sort((a, b) => (at(a) < at(b) ? -1 : at(a) > at(b) ? 1 : nOf(a.id) - nOf(b.id))), 'struck');
-  meWords($('handle'), order.filter(t => !t.done && t !== one), '');
-  const g = $('guard');
-  g.hidden = !one; g.textContent = one ? one.word : ''; g.dataset.id = one ? one.id : '';
-  g.setAttribute('aria-label', one ? 'the one thing: ' + one.word + ' — ' + one.text : 'the one thing');
-  $('guardLine').textContent = one ? one.text : order.length ? 'every task is done' : 'tell Orv what the day holds, or tap +';
-  fitGuard();
+  $('meNudge').hidden = isEmpty(st) || meGet('kept', '') === today();   // the one dim word, only when a keep is due
+  renderSword();
   drawMeSky(order, one);
   const say = $('meSay'); say.textContent = ME.say ? ME.say.text : ''; say.classList.toggle('stage', !!(ME.say && ME.say.stage));
   const key = String(readBox().apiKey || '').trim(), usable = !!key && !!DOORS[doorOf(key)];
   $('meKey').hidden = usable;
   $('meKeyLine').textContent = key && !usable ? 'No door answers to that key — paste another' : KNOBS.me.keyLine;
-  $('meSpeak').disabled = ME.busy; $('meSpeak').textContent = ME.busy ? 'orv is reading' : 'speak';
-  $('meNote').textContent = ME.note || '';
+  $('meNote').textContent = ME.busy ? 'orv is reading' : ME.note || '';
 }
 function meNote(t) { ME.note = t; $('meNote').textContent = t; }
+
+/* ═══ THE SEAMS — his name is the border. HIGH KING LEEVZO stands between the sword and the right side,
+   THE LUCKY between the sky and Orv's corner. Day One's barrier (_glass.js portalInit): the border follows
+   the finger 1:1 and holds exactly where it is let go; this glass remembers it (ink.me.layout). A
+   double-tap puts it back where it began. The letters are the Sword's own pixel face, bold, as sword.js
+   draws the hero's name — each its own hue, stepped round THE 23's WHEEL (never the STAR's browns),
+   lifted in lightness until it reads on the grey. ═══ */
+const GLYPH5x7 = {                                               // sword-engine.js G, only the letters his name needs
+  C: [0x3e, 0x41, 0x41, 0x41, 0x22], E: [0x7f, 0x49, 0x49, 0x49, 0x41], G: [0x3e, 0x41, 0x49, 0x49, 0x7a],
+  H: [0x7f, 8, 8, 8, 0x7f], I: [0, 0x41, 0x7f, 0x41, 0], K: [0x7f, 8, 0x14, 0x22, 0x41], L: [0x7f, 0x40, 0x40, 0x40, 0x40],
+  N: [0x7f, 4, 8, 0x10, 0x7f], O: [0x3e, 0x41, 0x41, 0x41, 0x3e], T: [1, 1, 0x7f, 1, 1], U: [0x3f, 0x40, 0x40, 0x40, 0x3f],
+  V: [0x1f, 0x20, 0x40, 0x20, 0x1f], Y: [7, 8, 0x70, 8, 7], Z: [0x61, 0x51, 0x49, 0x45, 0x43]
+};
+function pixGlyph(ch, scale, ink) {
+  const g = GLYPH5x7[ch]; if (!g) return null;
+  const cols = g.map((c, i) => (c | (g[i - 1] || 0)) & 0x7f);    // bold: each column takes its left neighbour (sword-engine cols())
+  const svg = document.createElementNS(SVGNS, 'svg');
+  [['width', 5 * scale], ['height', 7 * scale], ['viewBox', '0 0 5 7'], ['aria-hidden', 'true']].forEach(([k, v]) => svg.setAttribute(k, String(v)));
+  let d = '';
+  cols.forEach((col, x) => { let y = 0;
+    while (y < 7) { if (!(col & (1 << y))) { y++; continue; } let run = 1; while (y + run < 7 && (col & (1 << (y + run)))) run++; d += 'M' + x + ' ' + y + 'h1v' + run + 'h-1z'; y += run; } });
+  const p = document.createElementNS(SVGNS, 'path'); p.setAttribute('d', d); p.setAttribute('fill', ink); svg.appendChild(p);
+  svg.dataset.ink = ink;
+  return svg;
+}
+function lumOf(hex) {
+  const n = parseInt(hex.slice(1), 16), lin = c => { const v = c / 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+  return 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+}
+const contrastOf = (a, b) => { const x = lumOf(a), y = lumOf(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+function hslOf(hex) {
+  const n = parseInt(hex.slice(1), 16), r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2; if (mx === mn) return [0, 0, l];
+  const d = mx - mn, s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+  return [(mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4) / 6, s, l];
+}
+function hexOf(h, s, l) {
+  const f = (p, q, t) => { t = ((t % 1) + 1) % 1; return t < 1 / 6 ? p + (q - p) * 6 * t : t < 1 / 2 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p; };
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q, x = v => Math.round(v * 255).toString(16).padStart(2, '0');
+  return s === 0 ? '#' + x(l) + x(l) + x(l) : '#' + x(f(p, q, h + 1 / 3)) + x(f(p, q, h)) + x(f(p, q, h - 1 / 3));
+}
+function nameInk(k) {
+  const N = KNOBS.me.name, W = KNOBS.me.wheel, hex = W[(k * N.step) % W.length], ground = KNOBS.me.look.ground;
+  let [h, s, l] = hslOf(hex), c = hex;
+  if (h * 360 >= 15 && h * 360 <= 60 && l < 0.45) { l = 0.45; c = hexOf(h, s, l); }   // never brown
+  while (contrastOf(c, ground) < N.floor && l < 0.95) { l = Math.min(0.95, l + 0.01); c = hexOf(h, s, l); }
+  return c;
+}
+function seamWords() {
+  const N = KNOBS.me.name; let k = 0;
+  [['vseam', N.v], ['hseam', N.h]].forEach(([id, text]) => {     // the colours run on from his name into his title
+    const host = $(id); host.textContent = '';
+    Array.from(text).forEach(ch => {
+      if (ch === ' ') { host.appendChild(mk('i', 'sp')); return; }
+      const g = pixGlyph(ch, N.scale, nameInk(k++)); if (g) host.appendChild(g);
+    });
+  });
+}
+function seamBounds() {
+  const K = KNOBS.me.seams, W = $('meMid').clientWidth, H = $('meMid').clientHeight;
+  return { W, H, v: [K.vMin, Math.max(K.vMin, W - K.w - K.rightMin)], h: [K.hMin, Math.max(K.hMin, H - K.w - K.cornerMin)] };
+}
+const clampTo = (v, b) => Math.max(b[0], Math.min(b[1], Math.round(v)));
+function seamSet(axis, px) {
+  const v = clampTo(px, seamBounds()[axis]);
+  (axis === 'v' ? $('meMid') : $('meRight')).style.setProperty(axis === 'v' ? '--vx' : '--hy', v + 'px');
+  return v;
+}
+function seamKeep(axis, v) { const L = meGet('layout', null) || {}; if (v == null) delete L[axis]; else L[axis] = v; mePut('layout', L); }
+function seamsApply() {
+  if (!ME.on) return;
+  const K = KNOBS.me.seams, L = meGet('layout', null) || {}, B = seamBounds();
+  if (!B.W || !B.H) return;
+  seamSet('v', Number.isFinite(L.v) ? L.v : B.W * K.v);
+  seamSet('h', Number.isFinite(L.h) ? L.h : (B.H - K.w) * K.h);
+  fitGuard();
+}
+let SEAM = null;
+const SEAM_TAP = { v: 0, h: 0 };
+function seamDown(e) {
+  if (!ME.on || SEAM || SW || (e.pointerType === 'mouse' && e.button !== 0)) return;
+  const el = e.currentTarget, axis = el.id === 'vseam' ? 'v' : 'h';
+  SEAM = { el, axis, pid: e.pointerId, p0: axis === 'v' ? e.clientX : e.clientY, moved: false,
+           s0: axis === 'v' ? $('sword').getBoundingClientRect().width : $('meSkyCol').getBoundingClientRect().height };
+  SEAM.v = Math.round(SEAM.s0);
+  try { el.setPointerCapture(e.pointerId); } catch (err) { /* the move events still come */ }
+  e.preventDefault();
+}
+function seamMove(e) {
+  if (!SEAM || e.pointerId !== SEAM.pid) return;
+  const d = (SEAM.axis === 'v' ? e.clientX : e.clientY) - SEAM.p0;
+  if (!SEAM.moved && Math.abs(d) < KNOBS.me.seams.moved) return;
+  SEAM.moved = true;
+  if (e.cancelable) e.preventDefault();
+  SEAM.v = seamSet(SEAM.axis, SEAM.s0 + d);                      // 1:1 with the finger, no easing
+  if (SEAM.axis === 'v') fitGuard();
+}
+function seamUp(e) {
+  if (!SEAM || e.pointerId !== SEAM.pid) return;
+  const s = SEAM; SEAM = null;
+  if (e.type === 'pointercancel') return;
+  if (s.moved) { seamKeep(s.axis, s.v); SEAM_TAP[s.axis] = 0; return; }   // it holds exactly where it was let go
+  const now = Date.now();
+  if (now - SEAM_TAP[s.axis] < KNOBS.me.seams.dbl) { SEAM_TAP[s.axis] = 0; seamKeep(s.axis, null); seamsApply(); }
+  else SEAM_TAP[s.axis] = now;
+}
+function seamKey(e) {
+  const axis = e.currentTarget.id === 'vseam' ? 'v' : 'h', back = axis === 'v' ? 'ArrowLeft' : 'ArrowUp', on = axis === 'v' ? 'ArrowRight' : 'ArrowDown';
+  if (e.key !== back && e.key !== on) return;
+  e.preventDefault();
+  const now = axis === 'v' ? $('sword').getBoundingClientRect().width : $('meSkyCol').getBoundingClientRect().height;
+  seamKeep(axis, seamSet(axis, now + (e.key === on ? 1 : -1) * KNOBS.me.seams.nudge)); fitGuard();
+}
+
+/* ═══ THE PULL — the shelf words (projects · keep · restore) live above the glass: pull the top down and
+   they come out with the finger; let go past half of them and they stay; they go again after use. ═══ */
+let PULL = null;
+function pullDown(e) {
+  if (!ME.on || PULL || SW || SEAM || (e.pointerType === 'mouse' && e.button !== 0)) return;
+  if (e.clientY > $('meTop').getBoundingClientRect().bottom) return;
+  PULL = { pid: e.pointerId, y: e.clientY, was: !$('meShelf').hidden, full: 0, h: 0, moved: false };
+}
+function pullMove(e) {
+  if (!PULL || e.pointerId !== PULL.pid) return;
+  const dy = e.clientY - PULL.y, sh = $('meShelf');
+  if (!PULL.moved) {
+    if (Math.abs(dy) < KNOBS.me.swipeLock) return;
+    PULL.moved = true; sh.style.height = ''; sh.hidden = false; PULL.full = sh.getBoundingClientRect().height || 44;
+  }
+  if (e.cancelable) e.preventDefault();
+  PULL.h = Math.max(0, Math.min(PULL.full, (PULL.was ? PULL.full : 0) + dy));
+  sh.style.height = PULL.h + 'px';
+}
+function pullUp(e) {
+  if (!PULL || e.pointerId !== PULL.pid) return;
+  const p = PULL; PULL = null;
+  if (!p.moved) return;
+  ME.swiped = Date.now();
+  const sh = $('meShelf'); sh.style.height = '';
+  sh.hidden = !(e.type !== 'pointercancel' && p.h >= p.full / 2);
+}
+function shelfUsed() { $('meShelf').hidden = true; }
 
 /* the shelf: joined projects; opening one switches the glass into project mode for it */
 function meShelf() {
@@ -1493,6 +1911,7 @@ async function meEnter(seedRaw) {
   const last = (Array.isArray(log) ? log : []).slice().reverse().find(e => e && typeof e.who === 'string' && e.who.startsWith('ai:') && e.what === 'reply' && e.text);
   meSay(last ? last.text : KNOBS.me.hello, !last);
   meRender();
+  seamsApply();
 }
 
 /* ═══ BOOT ═══ */
@@ -1501,8 +1920,11 @@ async function boot() {
   root.setProperty('--ground', KNOBS.ground); root.setProperty('--ink', KNOBS.ink); root.setProperty('--dim', KNOBS.dim);
   root.setProperty('--faint', KNOBS.faint); root.setProperty('--gold', INK.hex(INK.KING)); root.setProperty('--pad', KNOBS.pad + 'px');
   root.setProperty('--script', KNOBS.scriptPx + 'px');
-  root.setProperty('--orv-w', 41 * KNOBS.orvScale + 'px'); root.setProperty('--orv-h', 50 * KNOBS.orvScale + 'px');
+  root.setProperty('--orv-w', (41 + 2 * KNOBS.summon.mx) * KNOBS.orvScale + 'px'); root.setProperty('--orv-h', (50 + KNOBS.summon.my) * KNOBS.orvScale + 'px');
   root.setProperty('--blade', KNOBS.me.bladePx + 'px'); root.setProperty('--handle', KNOBS.me.handlePx + 'px');
+  const U = KNOBS.me.unfold, N = KNOBS.me.name;
+  root.setProperty('--step', U.step + 'px'); root.setProperty('--unfoldFull', U.full + 'px'); root.setProperty('--unfoldLine', U.line + 'px');
+  root.setProperty('--seam', KNOBS.me.seams.w + 'px'); root.setProperty('--nameGap', N.gap + 'px'); root.setProperty('--nameSpace', N.space + 'px');
 
   const track = $('track');
   track.scrollLeft = track.clientWidth;                                  // open on HOME, the middle pane
@@ -1515,29 +1937,48 @@ async function boot() {
   $('askBtn').addEventListener('click', askOrv);
   $('orv').addEventListener('click', () => (ME.on ? meSpeak() : askOrv()));
   /* personal mode: his hand on the sword, the sky, the shelf */
-  $('meSpeak').addEventListener('click', meSpeak);
   $('meWords').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); meSpeak(); } });
   $('guard').addEventListener('click', () => { if ($('guard').dataset.id) meTap($('guard').dataset.id, $('guard')); });
-  $('plus').addEventListener('click', () => openMenu(null, $('plus'), 'add'));
-  const sword = $('sword');                                      // the swipe: pointer events, sideways only (touch-action: pan-y)
+  $('plus').addEventListener('click', () => editBegin(null));
+  /* his hand on a word or a star: tap · swipe · hold · drag (one state machine, pointer events) */
+  const sword = $('sword'), me = $('me');
   sword.addEventListener('pointerdown', swDown);
+  $('meSky').addEventListener('pointerdown', swDown);
   addEventListener('pointermove', swMove, { passive: false });
   addEventListener('pointerup', swUp); addEventListener('pointercancel', swUp);
-  sword.addEventListener('click', e => {                          // a swipe's own click is not a tap
+  addEventListener('touchmove', e => { if (((SW && SW.mode) || PULL || SEAM) && e.cancelable) e.preventDefault(); }, { passive: false });
+  me.addEventListener('contextmenu', e => { if (e.target.closest && e.target.closest('#sword [data-id], #meSky [data-id], .seam, #meTop')) e.preventDefault(); });
+  sword.addEventListener('click', e => {                          // a hold's, a swipe's or a drag's own click is not a tap
     if (ME.swiped && Date.now() - ME.swiped < 500) { e.stopPropagation(); e.preventDefault(); ME.swiped = 0; }
   }, true);
   $('meEmptyRestore').addEventListener('click', () => $('meFile').click());
-  const sky = $('meSky'), skyTap = e => {                        // INK's own tap would select; here a tap shows the word's information
+  const sky = $('meSky'), skyTap = e => {                        // INK's own tap would select; here a tap opens the word in the sword
     const g = e.target.closest && e.target.closest('[data-id]');
     e.stopPropagation();
-    if (g) { if (e.type === 'keydown') e.preventDefault(); meTap(g.getAttribute('data-id'), g); }
+    if (e.type === 'click' && ME.swiped && Date.now() - ME.swiped < 500) { ME.swiped = 0; return; }
+    if (g) { if (e.type === 'keydown') e.preventDefault(); meTap(g.getAttribute('data-id'), true); }
   };
   sky.addEventListener('click', skyTap, true);
   sky.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') skyTap(e); }, true);
-  document.addEventListener('pointerdown', e => {               // a tap anywhere else lets the menu go
-    if (!ME.menu || $('menu').contains(e.target) || (e.target.closest && e.target.closest('[data-id]'))) return;
-    closeMenu();
+  document.addEventListener('pointerdown', e => {               // a tap anywhere else keeps an edit and puts the shelf away
+    const inside = sel => e.target.closest && e.target.closest(sel);
+    ME.swiped = 0;                                                // a new press: any click owed to the last gesture has come and gone
+    if (ME.edit && !inside('#editor')) editCommit();
+    if (!$('meShelf').hidden && !inside('#meShelf') && !inside('#meTop')) $('meShelf').hidden = true;
+    if (!$('meShelfList').hidden && !inside('#meShelfList') && !inside('#meShelf')) { $('meShelfList').hidden = true; $('meProjects').setAttribute('aria-expanded', 'false'); }
   }, true);
+  /* the seams and the pull */
+  ['vseam', 'hseam'].forEach(id => {
+    const el = $(id);
+    el.addEventListener('pointerdown', seamDown); el.addEventListener('pointermove', seamMove);
+    el.addEventListener('pointerup', seamUp); el.addEventListener('pointercancel', seamUp);
+    el.addEventListener('keydown', seamKey);
+  });
+  me.addEventListener('pointerdown', pullDown);
+  addEventListener('pointermove', pullMove, { passive: false });
+  addEventListener('pointerup', pullUp); addEventListener('pointercancel', pullUp);
+  $('meTop').addEventListener('click', e => { if (ME.swiped && Date.now() - ME.swiped < 500) { e.stopPropagation(); e.preventDefault(); ME.swiped = 0; } }, true);
+  $('meNudge').addEventListener('click', meKeep);
   $('meKeySave').addEventListener('click', () => {
     const k = $('meKeyIn').value.trim(), d = doorOf(k);
     if (!k) return $('meKeyIn').focus();
@@ -1553,12 +1994,14 @@ async function boot() {
     const l = $('meShelfList'), open = l.hidden;
     if (open) meShelf();
     l.hidden = !open; $('meProjects').setAttribute('aria-expanded', String(open));
+    shelfUsed();
   });
-  $('meKeep').addEventListener('click', meKeep);
-  $('meRestore').addEventListener('click', () => $('meFile').click());
+  $('meKeep').addEventListener('click', () => { shelfUsed(); meKeep(); });
+  $('meRestore').addEventListener('click', () => { shelfUsed(); $('meFile').click(); });
   $('meFile').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) meRestore(f); });
-  addEventListener('resize', () => { if (ME.on) { closeMenu(); swHome(); fitGuard(); } });
+  addEventListener('resize', () => { if (ME.on) { swHome(); seamsApply(); } });
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (ME.on) fitGuard(); });
+  seamWords();
   $('sendBtn').addEventListener('click', sendWords);
   $('pasteBtn').addEventListener('click', async () => { await readPasted($('pasteIn').value, $('pasteNote')); $('pasteIn').value = ''; });
   orvBoot();
@@ -1582,6 +2025,18 @@ async function boot() {
   else if (got && got.m && projects().length) { enter(projects()[0]); await takeBody(got.m); }
   else { await meEnter(seed); if (said && said.trim()) { $('meWords').value = said.slice(0, 4000); await meSpeak(); } }
   if (!ME.on) track.scrollLeft = track.clientWidth;
+  /* the glass already open when the "Tell Orv" Shortcut (or a seed link) arrives: a hash-only change does not
+     reload the page, so the words are taken here, the same way as at boot */
+  addEventListener('hashchange', async () => {
+    const sm = /^#seed=([A-Za-z0-9_-]+)$/.exec(location.hash), sy = /^#say=(.*)$/s.exec(location.hash);
+    if (!sm && !sy) return;
+    history.replaceState(null, '', location.pathname + location.search);
+    if (sm) return meEnter(sm[1]);
+    let words = null; try { words = decodeURIComponent(sy[1].replace(/\+/g, ' ')); } catch (e) { words = null; }
+    if (!words || !words.trim()) return;
+    if (!ME.on) await meEnter(null);
+    $('meWords').value = words.slice(0, 4000); await meSpeak();
+  });
   setInterval(resendDue, KNOBS.resendCheckMs);
   setInterval(renderRoad, KNOBS.roadMs);
 }
