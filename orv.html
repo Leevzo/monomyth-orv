@@ -45,7 +45,10 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--in
 #one { padding-left: 4px; min-height: 64px; }
 #oneWord { font-family: 'Dogica', ui-monospace, monospace; font-size: 30px; line-height: 38px; color: var(--gold); word-break: break-word; }
 #oneLine { font-size: var(--small); color: var(--dim); margin-top: 2px; }
-#clock { font-family: 'Dogica', ui-monospace, monospace; font-size: 12px; letter-spacing: .08em; margin-top: 6px; min-height: 16px; }
+/* the countdown to the next scheduled thing: big digits like the camp app, no borders, no lines */
+#clock { margin-top: 8px; min-height: 0; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+#clock .digits { font-family: 'Dogica', ui-monospace, monospace; font-size: 26px; letter-spacing: .04em; line-height: 1.1; }
+#clock .what { font-size: var(--small); color: var(--dim); }
 /* the middle: the list | the divider (his name) | Orv's side */
 #main { flex: 1 1 auto; min-height: 0; display: flex; margin-top: 14px; }
 #left { flex: 0 0 var(--d, 58%); width: var(--d, 58%); min-width: 0; display: flex; flex-direction: column; }
@@ -53,8 +56,10 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--in
 #list { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; padding-bottom: 8px; touch-action: pan-y; }
 /* the divider is only a word: "inkling", faint, in the middle of the screen. Drag the word. */
 #div { flex: 0 0 0px; position: relative; touch-action: none; user-select: none; -webkit-user-select: none; }
-#star { position: absolute; left: 0; top: 50%; transform: translate(-50%, -50%); padding: 14px 10px; cursor: col-resize; touch-action: none;
-  font-size: 15px; letter-spacing: .12em; color: var(--ink); opacity: .16; white-space: nowrap; }
+/* INKLING, sideways, like the SCRIPTORIUM spine: faint at rest, lit in the twelve colours under the finger */
+#star { position: absolute; left: 0; top: 50%; transform: translate(-50%, -50%) rotate(-90deg); padding: 10px 14px; cursor: col-resize; touch-action: none;
+  font-family: 'Dogica', ui-monospace, monospace; font-size: 17px; letter-spacing: .3em; color: var(--ink); opacity: .16; white-space: nowrap; transition: opacity .25s; }
+#star.lit { opacity: 1; }
 #app.open #star { opacity: .32; }
 #app.action #star { opacity: .5; color: var(--gold); }
 #right { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; padding-bottom: calc(var(--orvh) - 36px); }
@@ -232,13 +237,16 @@ function span(ms) { const s = Math.max(0, Math.floor(ms / 1000)), h = Math.floor
 function tick() {
   const c = $('clock'), one = theOne(), now = Date.now();
   const timed = open().filter(t => t.at && !isNaN(new Date(t.at))).sort((a, b) => new Date(a.at) - new Date(b.at));
-  const t = one && one.at ? one : timed.find(x => new Date(x.at) > now) || timed[0];
-  if (!t) { c.textContent = ''; return; }
-  const ms = new Date(t.at) - now, head = t === one ? '' : t.word + ' ';
-  const txt = ms >= 0 ? head + 'in ' + span(ms) : head + 'late ' + span(-ms);
-  c.textContent = '';
+  const next = timed.find(x => new Date(x.at) > now);                       // the next thing scheduled
+  const t = one && one.at && new Date(one.at) <= now ? one : next;          // the one thing gone late outranks it
+  c.textContent = ''; if (!t) return;
+  const ms = new Date(t.at) - now, late = ms < 0, txt = span(Math.abs(ms));
+  const d = document.createElement('span'); d.className = 'digits';
   Array.from(txt).forEach((ch, i) => { const s = document.createElement('span'); s.textContent = ch;
-    s.style.color = ms < 0 ? 'var(--late)' : /\d/.test(ch) ? K.wheel[(i + Math.floor(now / 1000)) % K.wheel.length] : 'var(--dim)'; c.appendChild(s); });
+    s.style.color = late ? 'var(--late)' : /\d/.test(ch) ? K.wheel[(i + Math.floor(now / 1000)) % K.wheel.length] : 'var(--dim)'; d.appendChild(s); });
+  const w = document.createElement('span'); w.className = 'what';
+  w.textContent = late ? (t === one ? 'late' : t.word + ' is late') : 'until ' + (t === one ? 'it starts' : t.word) + ' · ' + fmtAt(t.at);
+  c.append(d, w);
 }
 setInterval(tick, 1000);
 
@@ -540,6 +548,12 @@ let MODE = 'talk';
   const D = $('div'), A = $('app'), M = $('main');
   D.innerHTML = '<span id="star" aria-hidden="true">inkling</span>';   // his symbol comes later; for now, the word, faint
   const STAR = $('star');
+  const WORD = 'INKLING'; STAR.textContent = '';
+  Array.from(WORD).forEach(ch => { const x = document.createElement('span'); x.textContent = ch; STAR.appendChild(x); });
+  let dark = 0;
+  const light = () => { clearTimeout(dark); STAR.classList.add('lit'); Array.from(STAR.children).forEach((x, i) => { x.style.color = K.wheel[(i * 2) % K.wheel.length]; }); };
+  const unlight = () => { clearTimeout(dark); dark = setTimeout(() => { STAR.classList.remove('lit'); Array.from(STAR.children).forEach(x => { x.style.color = ''; }); }, 900); };
+  STAR.addEventListener('pointerdown', light); ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => STAR.addEventListener(t, unlight));
   const KD = { dflt: 0.58, left: 0.16, right: 0.86, min: 0.06, max: 0.94 };
   const setD = (f, keep) => { f = Math.max(KD.min, Math.min(KD.max, f)); A.style.setProperty('--d', (f * 100).toFixed(2) + '%');
     const was = MODE; MODE = f >= KD.right ? 'action' : 'talk'; A.classList.toggle('open', f <= KD.left); A.classList.toggle('action', MODE === 'action');
@@ -620,6 +634,9 @@ async function setTest() {
     setFill();
     setSay('✓ Works. ' + door + ' · ' + m + ' · ' + ((performance.now() - t0) / 1000).toFixed(1) + 's\nOrv: ' + heard, 'good');
     log({ who: 'k', what: 'tested', door, model: m });
+    setTimeout(() => { if ($('set').hidden) return; setClose();               // plug and play: tested, so straight into the app
+      if (!$('line').value.trim()) typeSay(FIRST && !open().length ? '(Orv rubs his claws together.) Your first Breath, High King. Tell me everything that is alive in you today, every road you are on. I will make the list.' : '(Orv blinks his one eye.) Talk to me.', true);
+      setTimeout(() => $('line').focus(), 100); }, 2200);
   } catch (e) {
     setSay('✗ The key is kept, but Orv could not get through: ' + plainWhy(e), 'bad');
   } finally { SET_BUSY = false; $('setTest').textContent = 'test'; setDiag(); salmonCall(); }
@@ -673,7 +690,7 @@ if (!HAD || !HAD_D) { (async () => {                   // the key is gone from l
   const sp = await SPARE.get(); let again = false; try { again = sessionStorage.getItem('orv.poured') === '1'; } catch (e) {}
   if (sp && sp[BOX] && !again) { try { Object.keys(sp).forEach(k => localStorage.setItem(k, sp[k])); sessionStorage.setItem('orv.poured', '1'); } catch (e) { return; }
     location.reload(); return; }
-  typeSay('(Orv points a claw at the salmon, top right.) My key lives in there, High King.', true);
+  setOpen('Paste your key and tap test. A Groq or Gemini key is free.');
 })(); }
 else if (!paidOpen(HAD_D)) typeSay('(Orv points at the salmon.) The ' + HAD_D + ' key costs money. Type ' + K.password + ' on the coin line in there.', true);
 else if (FIRST && !open().length) typeSay('(Orv rubs his claws together.) Your first Breath, High King. Tell me everything that is alive in you today, every road you are on. I will make the list.', true);
