@@ -1,0 +1,31 @@
+{
+ "name": "Orv",
+ "short_name": "Orv",
+ "description": "His kingdom on the phone: talk to Orv, and the talk becomes the Word Sword and the Constellation. Projects sit on the shelf.",
+ "id": "./",
+ "start_url": "./",
+ "scope": "./",
+ "display": "standalone",
+ "orientation": "portrait",
+ "background_color": "#454545",
+ "theme_color": "#454545",
+ "icons": [
+  {
+   "src": "icon-192.png",
+   "sizes": "192x192",
+   "type": "image/png",
+   "purpose": "any"
+  },
+  {
+   "src": "icon-512.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "any"
+  },
+  {
+   "src": "icon-180.png",
+   "sizes": "180x180",
+   "type": "image/png"
+  }
+ ]
+}
