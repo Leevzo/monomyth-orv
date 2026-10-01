@@ -125,15 +125,17 @@ const nowIso = () => new Date().toISOString();
 const load = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } };
 const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { say('(This phone would not keep that. Tap keep to save a copy.)', true); return false; } };
 function blank() { return { v: 1, tasks: [], one: null, n: 0 }; }
-let ST = load('orv.state', null);
-if (!ST || !Array.isArray(ST.tasks)) {                     // first open: bring over the kingdom from the last glass, if any
-  ST = blank();
-  const old = load('ink.me.state', null);
-  if (old && Array.isArray(old.tasks)) old.tasks.filter(t => t && !t.deleted && !t.archived).forEach(t => {
-    ST.n += 1; ST.tasks.push({ id: 't' + ST.n.toString(36), word: String(t.word || 'task').slice(0, 24), text: String(t.text || '').slice(0, 200), at: null, done: !!t.done, doneAt: t.doneAt || null });
-  });
-  store('orv.state', ST);
+/* #new: a new kingdom. Whatever was here is set aside (kept under orv.archive.<time>, never deleted). */
+if (location.hash === '#new') {
+  const was = load('orv.state', null);
+  if (was) store('orv.archive.' + Date.now(), { state: was, log: load('orv.log', []) });
+  ['orv.state', 'orv.log', 'orv.chat', 'orv.summary', 'orv.breath'].forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+  history.replaceState(null, '', location.pathname + location.search);
 }
+let ST = load('orv.state', null);
+if (!ST || !Array.isArray(ST.tasks)) { ST = blank(); store('orv.state', ST); }
+/* ask the phone to keep this kingdom for good (Safari honours it for sites he uses) */
+try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
 function log(e) { const L = load('orv.log', []); L.push(Object.assign({ at: nowIso() }, e)); store('orv.log', L); }
 const save = () => store('orv.state', ST);
 const live = () => ST.tasks.filter(t => !t.gone);
@@ -209,7 +211,10 @@ setInterval(tick, 1000);
 })();
 
 /* ═══ ORV'S WORDS on screen ═══ */
-function say(text, stage) { const s = $('say'); s.textContent = text; s.classList.toggle('stage', !!stage); }
+let TYPING = 0;
+function say(text, stage) { clearInterval(TYPING); const s = $('say'); s.textContent = text; s.classList.toggle('stage', !!stage); }
+function typeSay(text, stage) { clearInterval(TYPING); const s = $('say'); s.textContent = ''; s.classList.toggle('stage', !!stage);
+  const a = Array.from(String(text)); let i = 0; TYPING = setInterval(() => { i = Math.min(a.length, i + 3); s.textContent = a.slice(0, i).join(''); if (i >= a.length) clearInterval(TYPING); }, 1000 / K.fps); }
 function lastLine() { /* his lines show only when the divider is dragged far left */ }
 /* the whole talk, on the right pane: every word he said and every answer, from the log, oldest first */
 function drawChat() { const c = $('chatLog'); c.textContent = '';
@@ -281,6 +286,7 @@ function system() {
     '\n {"op":"order","ids":["<id>", "..."]}   (the whole open list, highest priority first)' +
     '\n {"op":"one","id":"<id>"}   (THE ONE THING)' +
     '\nNew tasks you add go to the end unless you also send an order. Use only ids that exist. Never invent tasks he did not mention.' +
+    (FIRST ? '\nTHIS IS HIS FIRST BREATH: build his list from it. Add every task, idea and plan he names (one word each, his own line), order them by priority, set THE ONE THING, and give times only where he gives them. In "say", one or two sentences on the shape of his day, in your own voice.' : '') +
     (MODE === 'action' ? '\nACTION MODE: do what he asks to the list and say nothing: "say" must be "".' : '');
 }
 
@@ -313,14 +319,17 @@ function apply(ops) {
 
 /* ═══ HE SPEAKS ═══ */
 let BUSY = false;
+let FIRST = !load('orv.log', []).some(e => e.who === 'k' && e.what === 'said');
 async function speak(raw) {
   const words = String(raw || '').trim(); if (!words || BUSY) return;
   $('line').value = '';
   if (looksLikeKey(words)) {                                  // a key: kept in the box, never sent anywhere else
     const d = doorOf(words), b = box(); b.apiKey = words; store(BOX, b); log({ who: 'k', what: 'key', door: d });
-    return say(paidOpen(d) ? 'Key kept. The ' + d + ' door is open. Talk to me.' : 'Key kept. The ' + d + ' door costs coin; type ' + K.password + ' to let me spend on it.', true);
+    if (!paidOpen(d)) return typeSay('Key kept. The ' + d + ' door costs coin; type ' + K.password + ' to let me spend on it.', true);
+    return typeSay(FIRST ? 'Key kept. Now your first Breath, High King: tell me everything that is alive in you today, every road you are on. I will make the list.' : 'Key kept. The ' + d + ' door is open. Talk to me.', true);
   }
   log({ who: 'k', what: 'said', text: words });               // his words first, verbatim, always
+  if (FIRST) { const B = load('orv.breath', []); B.push({ at: nowIso(), text: words, first: true }); store('orv.breath', B); }
   store('orv.summary', '');
   if (words.toLowerCase() === K.password.toLowerCase()) { const d = doorOf(box().apiKey); if (d) { const p = load('orv.paid', {}); p[d] = nowIso(); store('orv.paid', p); } return say('Cha-ching heard. The ' + (d || '') + ' door is open.', true); }
   if (/^many thanks\b/i.test(words)) { await thanks(); return; }
@@ -335,7 +344,8 @@ async function speak(raw) {
     if (!reply || typeof reply !== 'object') { log({ who: 'ai:' + d + ':' + m, what: 'unparsed', text }); say(String(text).slice(0, 600)); }
     else { const r = apply(reply.ops); log({ who: 'ai:' + d + ':' + m, what: 'answered', text: String(reply.say || ''), ops: reply.ops || [], dropped: r.dropped });
       if (MODE === 'action') { say(''); $('mode').textContent = 'ACTION · ' + r.done + ' DONE'; }
-      else say(String(reply.say || '').slice(0, 900) || '(Orv nods.)', !reply.say); }
+      else typeSay(String(reply.say || '').slice(0, 900) || '(Orv nods.)', !reply.say);
+      if (r.done) FIRST = false; }
     store('orv.chat', turns.concat([{ role: 'assistant', content: text }]).slice(-K.memory * 2));
   } catch (e) { log({ who: 'ai:' + d, what: 'error', text: String(e.message || e) }); say('(The door did not answer: ' + String(e.message || e).slice(0, 140) + '. Your words are kept.)', true); }
   BUSY = false; ORV.listening = false; render(); drawChat();
@@ -439,7 +449,8 @@ function fromHash() { const m = /^#say=(.*)$/s.exec(location.hash); if (!m) retu
   history.replaceState(null, '', location.pathname + location.search); if (w.trim()) speak(w); }
 fromHash(); window.addEventListener('hashchange', fromHash);
 drawChat();
-if (!box().apiKey) say('(Orv looks up at you.) Paste a key on the line below and tap me. Then tell me what the day holds.', true);
+if (!box().apiKey) typeSay('(Orv climbs out from under the table, one great eye on you.) High King. Paste your key on the line below and tap me.', true);
+else if (FIRST && !open().length) typeSay('(Orv rubs his claws together.) Your first Breath, High King. Tell me everything that is alive in you today, every road you are on. I will make the list.', true);
 else if (load('orv.summary', '')) say(load('orv.summary', ''));
 </script>
 </body>
