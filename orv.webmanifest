@@ -1,0 +1,2 @@
+{ "name": "Orv", "short_name": "Orv", "id": "./", "start_url": "./", "display": "browser", "background_color": "#454545", "theme_color": "#454545",
+  "icons": [{ "src": "icon.png", "sizes": "180x180", "type": "image/png", "purpose": "any" }] }

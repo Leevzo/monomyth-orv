@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-title" content="Orv">
+<meta name="theme-color" content="#454545">
+<title>Orv</title>
+<link rel="manifest" href="./orv.webmanifest">
+<link rel="apple-touch-icon" href="./icon.png">
+<link rel="stylesheet" href="./fonts.css">
+<!--
+  ORV — the whole app, bare bones (the King, 2026-10-01 morning):
+  "Orv in the corner of the screen, the one thing in the upper left-hand corner with some fun visual details like
+   counting down time if there's a timed thing coming up ... nothing has to come up and cover anything ... a to-do
+   list and I can type to him and he'll answer back with a conversational message ... one line on the bottom ...
+   the words on their own, very colorful when selected, floating to the right, timed against the left-hand side with
+   a number on the most left-hand side of the entire screen ... listing my ideas, running the numbers and ordering my
+   tasks by priority. That's the whole app."
+
+  How it works, all of it:
+  - The list lives on this phone: localStorage 'orv.state' {v, tasks:[{id, word, text, at, done, doneAt, gone}], one, n}.
+    The order of tasks IS the priority. Every word he types is kept first, verbatim, in 'orv.log' (append-only).
+  - He types on the bottom line. Orv answers through the key box (the same box the Sword uses,
+    'monomyth.focus.byok.v1'); the model returns {say, ops}; this page checks every op and applies only the good ones.
+  - A key typed on the line is kept as the key (never sent to a model). A paid door waits for the word Cha-ching.
+  - "many thanks" clears the talk (the log keeps it). #say=<words> (the Tell Orv Shortcut) arrives as if typed.
+  - Tap a word: it lights in colour, floats right and shows its line. Swipe right = done. Swipe left = set aside.
+  Nothing pops up. Nothing covers anything.
+-->
+<style>
+:root {
+  --ground: #454545; --ink: #f2f2f2; --dim: #a9a9a9; --faint: #6e6e6e; --gold: #FFA512; --late: #FF3D12;
+  --pad: 18px; --orv: 123px; --word: 22px; --small: 13px;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); overflow: hidden;
+  font-family: 'W95FA', ui-monospace, monospace; -webkit-font-smoothing: none; font-smooth: never; }
+#track { position: fixed; inset: 0; display: flex; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; scrollbar-width: none; }
+#track::-webkit-scrollbar { display: none; }
+.pane { flex: 0 0 100%; width: 100%; height: 100%; scroll-snap-align: start; scroll-snap-stop: always; }
+#app { position: relative; display: flex; flex-direction: column;
+  padding: calc(env(safe-area-inset-top) + 14px) var(--pad) calc(env(safe-area-inset-bottom) + 10px) 8px; }
+/* THE ONE THING, upper left */
+#one { padding-left: 4px; min-height: 64px; }
+#oneWord { font-family: 'Dogica', ui-monospace, monospace; font-size: 30px; line-height: 38px; color: var(--gold); word-break: break-word; }
+#oneLine { font-size: var(--small); color: var(--dim); margin-top: 2px; }
+#clock { font-family: 'Dogica', ui-monospace, monospace; font-size: 12px; letter-spacing: .08em; margin-top: 6px; min-height: 16px; }
+/* the list: numbers on the very left edge, times beside them, the words floating free */
+#list { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; margin-top: 14px; padding-bottom: 8px; touch-action: pan-y; }
+.row { display: grid; grid-template-columns: 22px 46px 1fr; align-items: baseline; min-height: 40px; padding: 4px 0;
+  user-select: none; -webkit-user-select: none; touch-action: pan-y; }
+.num { font-family: 'Dogica', ui-monospace, monospace; font-size: 11px; color: var(--faint); text-align: left; }
+.at { font-size: var(--small); color: var(--dim); }
+.at.late { color: var(--late); }
+.word { font-size: var(--word); transition: none; }
+.row.sel .word { transform: translateX(28px); }
+.row.sel .line { display: block; }
+.line { display: none; grid-column: 3; font-size: var(--small); color: var(--dim); transform: translateX(28px); margin-top: 2px; }
+.row.done .word { color: var(--faint); text-decoration: line-through; }
+.row.is-one .word { color: var(--gold); }
+#bottom { display: grid; grid-template-columns: 1fr var(--orv); align-items: end; gap: 6px; }
+#say { font-size: 16px; line-height: 1.35; max-height: 32vh; overflow-y: auto; padding: 0 0 8px 4px; white-space: pre-wrap; }
+#say.stage { color: var(--dim); font-style: italic; }
+#line { width: 100%; font: inherit; font-size: 17px; color: var(--ink); background: transparent; border: 0;
+  border-bottom: 1px solid var(--faint); padding: 8px 2px 8px 4px; outline: none; border-radius: 0; }
+#line::placeholder { color: var(--faint); }
+#orv { width: var(--orv); height: 156px; image-rendering: pixelated; cursor: pointer; justify-self: end; }
+#last { font-size: var(--small); color: var(--faint); padding: 0 0 4px 4px; white-space: pre-wrap; }
+#chat { overflow-y: auto; padding: calc(env(safe-area-inset-top) + 14px) var(--pad) calc(env(safe-area-inset-bottom) + 16px); }
+#chat h2 { font-family: 'Dogica', ui-monospace, monospace; font-size: 10px; letter-spacing: .2em; color: var(--faint); font-weight: normal; margin: 0 0 14px; }
+#chat .k { color: var(--dim); font-size: 15px; margin: 14px 0 4px; white-space: pre-wrap; }
+#chat .o { font-size: 16px; line-height: 1.35; margin: 0 0 4px; white-space: pre-wrap; }
+#chat .sum { color: var(--gold); font-size: 14px; margin: 10px 0 18px; }
+#keep { position: absolute; top: calc(env(safe-area-inset-top) + 14px); right: var(--pad); font-size: var(--small);
+  color: var(--faint); background: none; border: 0; padding: 6px; font-family: inherit; }
+#flash { position: fixed; inset: 0; pointer-events: none; opacity: 0; }
+@media (prefers-reduced-motion: reduce) { .row.sel .word, .line { transform: none; } }
+</style>
+</head>
+<body>
+<div id="track"><div id="app" class="pane">
+  <div id="one"><div id="oneWord"></div><div id="oneLine"></div><div id="clock"></div></div>
+  <div id="list" aria-label="your list, in order of priority"></div>
+  <div id="bottom">
+    <div><div id="last"></div><div id="say"></div><input id="line" autocomplete="off" autocapitalize="sentences" placeholder="tell orv" aria-label="tell Orv"></div>
+    <canvas id="orv" aria-label="Orv. Tap to send."></canvas>
+  </div>
+</div>
+<div id="chat" class="pane" aria-label="the whole talk with Orv"><h2>THE WHOLE TALK</h2><div id="chatLog"></div></div>
+</div>
+<button id="keep" aria-label="keep a copy of the list">keep</button>
+<input id="restore" type="file" accept="application/json,.json" hidden>
+<div id="flash"></div>
+<script>
+'use strict';
+/* ═══ KNOBS: every tunable value, for his eye ═══ */
+const K = {
+  wheel: ['#FF7A12', '#FF12A1', '#FA12FF', '#9212FF', '#2A12FF', '#126EFF', '#12D6FF', '#12FFC2', '#12FF5A', '#22FF12', '#8AFF12', '#F2FF12'],
+  seed: 'You are Orv, the teasing one-eyed homunculus and Hand. Read before speaking. Surface shapes, don\'t invent. Guide the King to write. Tease him.',
+  freeDoors: ['groq', 'gemini', 'openrouter'], password: 'Cha-ching',
+  swipe: 70, orvScale: 3, beat: [1400, 520, 130, 190], fps: 12, memory: 6, maxOps: 12, timeoutMs: 45000
+};
+const BOX = 'monomyth.focus.byok.v1';
+const DOORS = {
+  groq:       { list: 'https://api.groq.com/openai/v1/models', chat: 'https://api.groq.com/openai/v1/chat/completions' },
+  openrouter: { list: 'https://openrouter.ai/api/v1/models', chat: 'https://openrouter.ai/api/v1/chat/completions' },
+  xai:        { list: 'https://api.x.ai/v1/models', chat: 'https://api.x.ai/v1/chat/completions' },
+  openai:     { list: 'https://api.openai.com/v1/models', chat: 'https://api.openai.com/v1/chat/completions' },
+  anthropic:  { list: 'https://api.anthropic.com/v1/models?limit=100', chat: 'https://api.anthropic.com/v1/messages' },
+  gemini:     { list: 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', chat: 'https://generativelanguage.googleapis.com/v1beta/models/' }
+};
+const $ = id => document.getElementById(id);
+const nowIso = () => new Date().toISOString();
+
+/* ═══ STORAGE: his list and his words, on this phone ═══ */
+const load = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } };
+const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { say('(This phone would not keep that. Tap keep to save a copy.)', true); return false; } };
+function blank() { return { v: 1, tasks: [], one: null, n: 0 }; }
+let ST = load('orv.state', null);
+if (!ST || !Array.isArray(ST.tasks)) {                     // first open: bring over the kingdom from the last glass, if any
+  ST = blank();
+  const old = load('ink.me.state', null);
+  if (old && Array.isArray(old.tasks)) old.tasks.filter(t => t && !t.deleted && !t.archived).forEach(t => {
+    ST.n += 1; ST.tasks.push({ id: 't' + ST.n.toString(36), word: String(t.word || 'task').slice(0, 24), text: String(t.text || '').slice(0, 200), at: null, done: !!t.done, doneAt: t.doneAt || null });
+  });
+  store('orv.state', ST);
+}
+function log(e) { const L = load('orv.log', []); L.push(Object.assign({ at: nowIso() }, e)); store('orv.log', L); }
+const save = () => store('orv.state', ST);
+const live = () => ST.tasks.filter(t => !t.gone);
+const open = () => live().filter(t => !t.done);
+const byId = id => ST.tasks.find(t => t.id === id && !t.gone);
+function theOne() { const o = byId(ST.one); return o && !o.done ? o : open()[0] || null; }
+
+/* ═══ THE KEY BOX (the Sword's own shape: apiKey) ═══ */
+const box = () => load(BOX, {}) || {};
+const doorOf = k => { k = String(k || '').trim();
+  if (k.startsWith('gsk_')) return 'groq'; if (k.startsWith('sk-ant-')) return 'anthropic'; if (k.startsWith('sk-or-')) return 'openrouter';
+  if (k.startsWith('xai-')) return 'xai'; if (k.startsWith('AIza')) return 'gemini'; if (k.startsWith('sk-')) return 'openai'; return null; };
+const looksLikeKey = s => /^(gsk_|sk-ant-|sk-or-|xai-|AIza|sk-)[\w-]{16,}$/.test(String(s).trim());
+const paidOpen = d => K.freeDoors.includes(d) || !!(load('orv.paid', {})[d]);
+
+/* ═══ DRAWING ═══ */
+function fmtAt(at) { const d = new Date(at); if (isNaN(d)) return ''; let h = d.getHours(), m = d.getMinutes(), p = h < 12 ? 'a' : 'p'; h = h % 12 || 12;
+  const today = new Date().toDateString() === d.toDateString();
+  return (today ? '' : (d.getMonth() + 1) + '/' + d.getDate() + ' ') + h + (m ? ':' + String(m).padStart(2, '0') : '') + p; }
+function rainbow(el, text) { el.textContent = ''; Array.from(text).forEach((ch, i) => { const s = document.createElement('span'); s.textContent = ch; s.style.color = K.wheel[i % K.wheel.length]; el.appendChild(s); }); }
+let SEL = null;
+function render() {
+  const one = theOne();
+  $('oneWord').textContent = one ? one.word : (ST.tasks.length ? 'clear' : 'tell orv');
+  $('oneLine').textContent = one ? one.text : (ST.tasks.length ? 'every task is done' : 'what does the day hold?');
+  const L = $('list'); L.textContent = '';
+  const rows = open().concat(live().filter(t => t.done));
+  rows.forEach((t, i) => {
+    const r = document.createElement('div'); r.className = 'row' + (t.done ? ' done' : '') + (one && t.id === one.id ? ' is-one' : '') + (t.id === SEL ? ' sel' : '');
+    r.dataset.id = t.id;
+    const n = document.createElement('span'); n.className = 'num'; n.textContent = t.done ? '' : String(i + 1);
+    const a = document.createElement('span'); a.className = 'at'; a.textContent = t.at ? fmtAt(t.at) : '';
+    if (t.at && !t.done && new Date(t.at) < new Date()) a.classList.add('late');
+    const w = document.createElement('span'); w.className = 'word';
+    if (t.id === SEL) rainbow(w, t.word); else w.textContent = t.word;
+    const l = document.createElement('span'); l.className = 'line'; l.textContent = t.text || '';
+    r.append(n, a, w, l); L.appendChild(r);
+  });
+  tick();
+}
+/* the clock: a countdown to THE ONE THING if it is timed, else to the next timed task; the digits wheel through colour */
+function span(ms) { const s = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
+  return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0'); }
+function tick() {
+  const c = $('clock'), one = theOne(), now = Date.now();
+  const timed = open().filter(t => t.at && !isNaN(new Date(t.at))).sort((a, b) => new Date(a.at) - new Date(b.at));
+  const t = one && one.at ? one : timed.find(x => new Date(x.at) > now) || timed[0];
+  if (!t) { c.textContent = ''; return; }
+  const ms = new Date(t.at) - now, head = t === one ? '' : t.word + ' ';
+  const txt = ms >= 0 ? head + 'in ' + span(ms) : head + 'late ' + span(-ms);
+  c.textContent = '';
+  Array.from(txt).forEach((ch, i) => { const s = document.createElement('span'); s.textContent = ch;
+    s.style.color = ms < 0 ? 'var(--late)' : /\d/.test(ch) ? K.wheel[(i + Math.floor(now / 1000)) % K.wheel.length] : 'var(--dim)'; c.appendChild(s); });
+}
+setInterval(tick, 1000);
+
+/* ═══ TOUCH: tap = light it and float it right; swipe right = done; swipe left = set aside ═══ */
+(function touch() {
+  let row = null, x0 = 0, y0 = 0, dx = 0, lock = null;
+  const L = $('list');
+  L.addEventListener('pointerdown', e => { row = e.target.closest('.row'); if (!row) return; x0 = e.clientX; y0 = e.clientY; dx = 0; lock = null; });
+  L.addEventListener('pointermove', e => { if (!row) return; const mx = e.clientX - x0, my = e.clientY - y0;
+    if (!lock && (Math.abs(mx) > 10 || Math.abs(my) > 10)) lock = Math.abs(mx) > Math.abs(my) ? 'x' : 'y';
+    if (lock === 'x') { dx = mx; row.querySelector('.word').style.transform = 'translateX(' + dx + 'px)'; } });
+  const end = () => { if (!row) return; const t = byId(row.dataset.id), w = row.querySelector('.word'); w.style.transform = '';
+    if (lock === 'x' && t && Math.abs(dx) > K.swipe) {
+      if (dx > 0) { t.done = !t.done; t.doneAt = t.done ? nowIso() : null; log({ who: 'k', what: t.done ? 'done' : 'undone', id: t.id }); }
+      else { t.gone = true; log({ who: 'k', what: 'set aside', id: t.id, word: t.word }); }
+      save(); render();
+    } else if (!lock && t) { SEL = SEL === t.id ? null : t.id; render(); }
+    row = null; };
+  L.addEventListener('pointerup', end); L.addEventListener('pointercancel', () => { if (row) row.querySelector('.word').style.transform = ''; row = null; });
+})();
+
+/* ═══ ORV'S WORDS on screen ═══ */
+function say(text, stage) { const s = $('say'); s.textContent = text; s.classList.toggle('stage', !!stage); }
+function lastLine(words) { $('last').textContent = words ? '— ' + words : ''; }
+/* the whole talk, on the right pane: every word he said and every answer, from the log, oldest first */
+function drawChat() { const c = $('chatLog'); c.textContent = '';
+  load('orv.log', []).forEach(e => { let el = null;
+    if (e.who === 'k' && e.what === 'said') { el = document.createElement('div'); el.className = 'k'; el.textContent = e.text; }
+    else if (e.what === 'answered') { el = document.createElement('div'); el.className = 'o'; el.textContent = e.text; }
+    else if (e.what === 'summary') { el = document.createElement('div'); el.className = 'sum'; el.textContent = '✦ ' + e.text; }
+    if (el) c.appendChild(el); });
+  const p = $('chat'); p.scrollTop = p.scrollHeight; }
+function flash() { const f = $('flash'); let i = 0; const go = () => { if (i >= K.wheel.length) { f.style.opacity = 0; return; }
+  f.style.background = K.wheel[i++]; f.style.opacity = .5; setTimeout(go, 1000 / K.fps); }; if (!matchMedia('(prefers-reduced-motion: reduce)').matches) go(); }
+
+/* ═══ THE DOOR: his key, his door, the door's own models ═══ */
+function fetchT(url, init) { const c = new AbortController(), t = setTimeout(() => c.abort(), K.timeoutMs);
+  return fetch(url, Object.assign({}, init, { signal: c.signal, referrerPolicy: 'no-referrer' })).finally(() => clearTimeout(t)); }
+function headers(d, key) {
+  if (d === 'anthropic') return { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' };
+  if (d === 'gemini') return { 'content-type': 'application/json', 'x-goog-api-key': key };
+  return { 'content-type': 'application/json', authorization: 'Bearer ' + key };
+}
+async function model(d, key) {
+  const b = box(), named = String(((b.models || {})[d]) || '') || String((((b.lists || {})[d]) || {}).pick || '');
+  if (named) return named;
+  const kept = load('orv.model', {}); if (kept[d]) return kept[d];
+  const o = await (await fetchT(DOORS[d].list, { headers: headers(d, key) })).json();
+  let ids = d === 'gemini' ? (o.models || []).filter(m => (m.supportedGenerationMethods || []).includes('generateContent')).map(m => String(m.name).replace(/^models\//, ''))
+                           : (o.data || []).map(m => String(m.id));
+  ids = ids.filter(id => !/whisper|tts|embed|guard|image|audio|vision|search|realtime|transcribe|moderation|veo|imagen|live/i.test(id));
+  if (!ids.length) throw new Error('that door listed no models');
+  // a fast, able model, chosen from the door's own list (never a name fixed in this code)
+  const prefer = [/llama-3\.3-70b|gpt-oss-120b|qwen3|kimi|llama-4/i, /sonnet|flash|mini|70b/i];
+  const pick = (prefer.map(re => ids.find(id => re.test(id))).find(Boolean)) || ids[0];
+  kept[d] = pick; store('orv.model', kept); return pick;
+}
+async function call(d, key, m, system, turns) {
+  if (d === 'anthropic') {
+    const r = await fetchT(DOORS.anthropic.chat, { method: 'POST', headers: headers(d, key), body: JSON.stringify({ model: m, max_tokens: 1200, system, messages: turns }) });
+    const o = await r.json(); if (!r.ok) throw new Error((o.error && o.error.message) || 'status ' + r.status);
+    return (o.content || []).filter(c => c.type === 'text').map(c => c.text).join('');
+  }
+  if (d === 'gemini') {
+    const r = await fetchT(DOORS.gemini.chat + encodeURIComponent(m) + ':generateContent', { method: 'POST', headers: headers(d, key),
+      body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: turns.map(t => ({ role: t.role === 'assistant' ? 'model' : 'user', parts: [{ text: t.content }] })),
+        generationConfig: { responseMimeType: 'application/json' } }) });
+    const o = await r.json(); if (!r.ok) throw new Error((o.error && o.error.message) || 'status ' + r.status);
+    return ((((o.candidates || [])[0] || {}).content || {}).parts || []).map(p => p.text || '').join('');
+  }
+  const body = { model: m, messages: [{ role: 'system', content: system }].concat(turns), temperature: 0.6, response_format: { type: 'json_object' } };
+  let r = await fetchT(DOORS[d].chat, { method: 'POST', headers: headers(d, key), body: JSON.stringify(body) });
+  if (r.status === 400) { delete body.response_format; r = await fetchT(DOORS[d].chat, { method: 'POST', headers: headers(d, key), body: JSON.stringify(body) }); }
+  const o = await r.json(); if (!r.ok) throw new Error((o.error && (o.error.message || o.error)) || 'status ' + r.status);
+  return ((o.choices || [])[0] || {}).message ? o.choices[0].message.content || '' : '';
+}
+
+/* ═══ WHAT ORV IS TOLD: the seed first, then the list as it stands, then the rules of the reply ═══ */
+function system() {
+  const now = new Date(), tz = -now.getTimezoneOffset(), off = (tz >= 0 ? '+' : '-') + String(Math.floor(Math.abs(tz) / 60)).padStart(2, '0') + ':' + String(Math.abs(tz) % 60).padStart(2, '0');
+  const list = open().map((t, i) => (i + 1) + '. [' + t.id + '] ' + t.word + ' — ' + (t.text || '') + (t.at ? ' (at ' + t.at + ')' : '')).join('\n') || '(the list is empty)';
+  const one = theOne();
+  return K.seed + '\n\nYou keep the King\'s list on his phone. The order of the list IS its priority. Now is ' + now.toISOString() + ' (his local offset ' + off + ').' +
+    '\nTHE ONE THING: ' + (one ? one.word + ' [' + one.id + ']' : 'none') + '\nOPEN TASKS, in priority order:\n' + list +
+    '\nDone today: ' + live().filter(t => t.done).length + '.' +
+    '\n\nAnswer ONLY with one JSON object: {"say": "...", "ops": [...]}' +
+    '\n"say": a short conversational reply in your own voice (two or three sentences at most), to the High King. Run the numbers when they matter (how many, how long, what fits before what).' +
+    '\n"ops": changes to the list, only when his words ask for them or plainly imply them. Allowed ops, nothing else:' +
+    '\n {"op":"add","word":"<one word>","text":"<one plain line>","at":"<ISO time with offset, optional>"}' +
+    '\n {"op":"done","id":"<id>"}  {"op":"undone","id":"<id>"}  {"op":"remove","id":"<id>"}' +
+    '\n {"op":"edit","id":"<id>","word":"...","text":"...","at":"<ISO or null>"}' +
+    '\n {"op":"order","ids":["<id>", "..."]}   (the whole open list, highest priority first)' +
+    '\n {"op":"one","id":"<id>"}   (THE ONE THING)' +
+    '\nNew tasks you add go to the end unless you also send an order. Use only ids that exist. Never invent tasks he did not mention.';
+}
+
+/* ═══ CHECK EVERY OP, APPLY THE GOOD ONES ═══ */
+function apply(ops) {
+  const out = { done: 0, dropped: [] };
+  if (!Array.isArray(ops)) return out;
+  ops.slice(0, K.maxOps).forEach(o => {
+    const t = o && o.id ? byId(String(o.id)) : null, drop = why => out.dropped.push((o && o.op) + ': ' + why);
+    const okAt = a => a == null || a === '' || !isNaN(new Date(a));
+    if (!o || typeof o.op !== 'string') return drop('not an op');
+    if (o.op === 'add') {
+      const word = String(o.word || '').trim().split(/\s+/)[0]; if (!word) return drop('no word'); if (!okAt(o.at)) return drop('bad time');
+      ST.n += 1; ST.tasks.push({ id: 't' + ST.n.toString(36), word: word.slice(0, 24), text: String(o.text || '').slice(0, 200), at: o.at ? new Date(o.at).toISOString() : null, done: false, doneAt: null });
+    } else if (o.op === 'done' || o.op === 'undone') { if (!t) return drop('no such task'); t.done = o.op === 'done'; t.doneAt = t.done ? nowIso() : null; }
+    else if (o.op === 'remove') { if (!t) return drop('no such task'); t.gone = true; }
+    else if (o.op === 'edit') { if (!t) return drop('no such task'); if (!okAt(o.at)) return drop('bad time');
+      if (o.word) t.word = String(o.word).trim().split(/\s+/)[0].slice(0, 24); if (o.text != null) t.text = String(o.text).slice(0, 200);
+      if ('at' in o) t.at = o.at ? new Date(o.at).toISOString() : null; }
+    else if (o.op === 'order') { if (!Array.isArray(o.ids)) return drop('no ids'); const seen = new Set(), first = [];
+      o.ids.forEach(id => { const x = byId(String(id)); if (x && !seen.has(x.id)) { seen.add(x.id); first.push(x); } });
+      ST.tasks = first.concat(ST.tasks.filter(x => !seen.has(x.id))); }
+    else if (o.op === 'one') { if (!t) return drop('no such task'); ST.one = t.id; }
+    else return drop('unknown op');
+    out.done += 1;
+  });
+  if (ops.length > K.maxOps) out.dropped.push((ops.length - K.maxOps) + ' ops over the limit');
+  save(); return out;
+}
+
+/* ═══ HE SPEAKS ═══ */
+let BUSY = false;
+async function speak(raw) {
+  const words = String(raw || '').trim(); if (!words || BUSY) return;
+  $('line').value = '';
+  if (looksLikeKey(words)) {                                  // a key: kept in the box, never sent anywhere else
+    const d = doorOf(words), b = box(); b.apiKey = words; store(BOX, b); log({ who: 'k', what: 'key', door: d });
+    return say(paidOpen(d) ? 'Key kept. The ' + d + ' door is open. Talk to me.' : 'Key kept. The ' + d + ' door costs coin; type ' + K.password + ' to let me spend on it.', true);
+  }
+  log({ who: 'k', what: 'said', text: words });               // his words first, verbatim, always
+  store('orv.summary', '');
+  if (words.toLowerCase() === K.password.toLowerCase()) { const d = doorOf(box().apiKey); if (d) { const p = load('orv.paid', {}); p[d] = nowIso(); store('orv.paid', p); } return say('Cha-ching heard. The ' + (d || '') + ' door is open.', true); }
+  if (/^many thanks\b/i.test(words)) { await thanks(); return; }
+  const key = String(box().apiKey || '').trim(), d = doorOf(key);
+  if (!key || !d) return say('(Orv taps the empty key slot.) Paste a key on the line and tap me.', true);
+  if (!paidOpen(d)) return say('(The ' + d + ' door costs coin. Type ' + K.password + ' first.)', true);
+  lastLine(words); BUSY = true; ORV.listening = true; say('…', true);
+  const chat = load('orv.chat', []).slice(-K.memory * 2), turns = chat.concat([{ role: 'user', content: words }]);
+  try {
+    const m = await model(d, key), text = await call(d, key, m, system(), turns);
+    let reply = null; try { reply = JSON.parse(text); } catch (e) { const j = /\{[\s\S]*\}/.exec(text); if (j) try { reply = JSON.parse(j[0]); } catch (e2) { reply = null; } }
+    if (!reply || typeof reply !== 'object') { log({ who: 'ai:' + d + ':' + m, what: 'unparsed', text }); say(String(text).slice(0, 600)); }
+    else { const r = apply(reply.ops); log({ who: 'ai:' + d + ':' + m, what: 'answered', text: String(reply.say || ''), ops: reply.ops || [], dropped: r.dropped });
+      say(String(reply.say || '').slice(0, 900) || '(Orv nods.)', !reply.say); }
+    store('orv.chat', turns.concat([{ role: 'assistant', content: text }]).slice(-K.memory * 2));
+  } catch (e) { log({ who: 'ai:' + d, what: 'error', text: String(e.message || e) }); say('(The door did not answer: ' + String(e.message || e).slice(0, 140) + '. Your words are kept.)', true); }
+  BUSY = false; ORV.listening = false; render(); drawChat();
+}
+/* "many thanks": Orv sums up the talk in a line or two; the summary stays in the window until he types again */
+async function thanks() {
+  const chat = load('orv.chat', []), key = String(box().apiKey || '').trim(), d = doorOf(key);
+  let sum = '';
+  if (chat.length && key && d && paidOpen(d)) {
+    BUSY = true; ORV.listening = true; say('…', true);
+    try { const m = await model(d, key), text = await call(d, key, m, system() + '\n\nThe King said "many thanks": the talk is over. Put in "say" a summary of this talk in one or two short sentences (what changed on the list, what comes next). "ops" must be [].',
+      chat.concat([{ role: 'user', content: 'many thanks' }]));
+      let r = null; try { r = JSON.parse(text); } catch (e) { const j = /\{[\s\S]*\}/.exec(text); if (j) try { r = JSON.parse(j[0]); } catch (e2) { r = null; } }
+      sum = r && r.say ? String(r.say) : ''; } catch (e) { sum = ''; }
+    BUSY = false; ORV.listening = false;
+  }
+  if (!sum) sum = open().length + ' open, ' + live().filter(t => t.done).length + ' done. ' + (theOne() ? 'Next: ' + theOne().word + '.' : 'The list is clear.');
+  log({ who: 'orv', what: 'summary', text: sum }); store('orv.chat', []); store('orv.summary', sum);
+  flash(); lastLine(''); say(sum); render(); drawChat();
+}
+$('line').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); speak($('line').value); } });
+$('orv').addEventListener('click', () => { if ($('line').value.trim()) speak($('line').value); else $('line').focus(); });
+
+/* ═══ KEEP / RESTORE: a copy of the list as a file (hold keep to restore) ═══ */
+(function keep() {
+  let t = 0, held = false;
+  $('keep').addEventListener('pointerdown', () => { held = false; t = setTimeout(() => { held = true; $('restore').click(); }, 700); });
+  $('keep').addEventListener('pointerup', async () => { clearTimeout(t); if (held) return;
+    const name = 'orv-' + new Date().toISOString().slice(0, 10) + '.json', blob = new Blob([JSON.stringify({ state: ST, log: load('orv.log', []) })], { type: 'application/json' });
+    const file = new File([blob], name, { type: 'application/json' });
+    try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file] }); return; } } catch (e) { return; }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); });
+  $('restore').addEventListener('change', async e => { const f = e.target.files[0]; if (!f) return;
+    try { const o = JSON.parse(await f.text()); if (o && o.state && Array.isArray(o.state.tasks)) { ST = o.state; save(); log({ who: 'k', what: 'restored', text: f.name }); render(); say('Restored from ' + f.name + '.', true); } }
+    catch (x) { say('(That file would not open.)', true); } });
+})();
+
+/* ═══ ORV, SUMMONED: his own idle rig (Summon.tsx via OrvSummon2), the one Orv, never redrawn ═══ */
+const ORV = { listening: false };
+(async function orvBoot() {
+  const cv = $('orv'); let O; try { O = await (await fetch('./orv/orv2.json')).json(); } catch (e) { return; }
+  const w = O.w, h = O.h, S = K.orvScale, mx = 5, my = 4;
+  const lowest = rows => { for (let y = rows.length - 1; y >= 0; y--) if (/[^.]/.test(rows[y])) return y; return rows.length - 1; };
+  const floor = Math.max.apply(null, O.frames.map(lowest));
+  const rig = rows => { const width = rows.map(r => { let lo = 1e9, hi = -1; for (let x = 0; x < r.length; x++) if (r[x] !== '.') { lo = Math.min(lo, x); hi = Math.max(hi, x); } return hi < 0 ? 0 : hi - lo + 1; });
+    const top = Math.max(1, Math.round(h * .34)); let hm = 0, ha = 0; for (let y = 0; y < top; y++) if (width[y] > hm) { hm = width[y]; ha = y; }
+    let neck = ha + 1, n = 1e9; for (let y = ha + 1; y < Math.round(h * .5); y++) if (width[y] > 0 && width[y] < n) { n = width[y]; neck = y; }
+    const foot = h - Math.max(3, Math.round(h * .13)); let waist = Math.round((neck + h) / 2); n = 1e9;
+    for (let y = neck + 2; y < foot - 2; y++) if (width[y] > 0 && width[y] < n) { n = width[y]; waist = y; }
+    return { neck, foot, leg: Math.max(neck + 2, Math.min(waist, foot - 2)) }; };
+  const poses = O.frames.map(raw => { const drop = floor - lowest(raw); const rows = drop > 0 ? Array(drop).fill('.'.repeat(w)).concat(raw.slice(0, raw.length - drop)) : raw;
+    const src = document.createElement('canvas'); src.width = w; src.height = h; const sx = src.getContext('2d'), img = sx.createImageData(w, h);
+    rows.forEach((row, y) => { for (let x = 0; x < row.length; x++) { const hx = O.pal[row[x]]; if (!hx) continue; const v = parseInt(hx.slice(1), 16), o = (y * w + x) * 4;
+      img.data[o] = (v >> 16) & 255; img.data[o + 1] = (v >> 8) & 255; img.data[o + 2] = v & 255; img.data[o + 3] = 255; } });
+    sx.putImageData(img, 0, 0); return { src, r: rig(rows) }; });
+  cv.width = (w + mx * 2) * S; cv.height = (h + my) * S; cv.style.width = cv.width + 'px'; cv.style.height = cv.height + 'px';
+  const ctx = cv.getContext('2d'); ctx.imageSmoothingEnabled = false;
+  const d = { sx: 0, vx: 0, clk: 0, next: 2 }; let f = 0, last = 0, timer = 0;
+  const cl = (v, m) => Math.max(-m, Math.min(m, v));
+  const paint = (p, E) => { const { src, r } = poses[p], rise = Math.round((.5 + .5 * Math.sin(d.clk * Math.PI * 2 * (.2 + E * .55))) * (2.3 + E * 1.6));
+    const st = Math.round(cl(d.sx * (1.6 + E * .9), 3 + E * 1.5)), sh = st + Math.round(cl(d.sx * (.5 + E * .3), 1.5)), sl = Math.round(st * .45), X = mx * S, Y = my * S;
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    ctx.drawImage(src, 0, r.neck, w, r.leg - r.neck, X + st * S, Y + r.neck * S - rise * S, w * S, (r.leg - r.neck) * S + rise * S);
+    ctx.drawImage(src, 0, r.leg, w, r.foot - r.leg, X + sl * S, Y + r.leg * S, w * S, (r.foot - r.leg) * S);
+    ctx.drawImage(src, 0, r.foot, w, h - r.foot, X, Y + r.foot * S, w * S, (h - r.foot) * S);
+    ctx.drawImage(src, 0, 0, w, r.neck + 1, X + sh * S, Y - rise * S, w * S, (r.neck + 1) * S); };
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) { paint(0, .34); return; }
+  const arm = () => { clearTimeout(timer); timer = setTimeout(() => { f = (f + 1) % poses.length; arm(); }, K.beat[f % K.beat.length]); }; arm();
+  const loop = ts => { const t = ts / 1000, E = ORV.listening ? .42 : .34;
+    if (t - last >= 1 / K.fps) { last = t; d.clk += 1 / K.fps; d.vx += -d.sx * (5 + E * 6) / K.fps; d.vx *= .89 - E * .07; d.sx += d.vx / K.fps;
+      if (d.clk > d.next) { d.vx += (Math.random() < .5 ? -1 : 1) * ((.4 + E * .6) + Math.random() * (2.4 + E * 2.6)); d.next = d.clk + (1.5 - E * 1.2) + Math.random() * (6 - E * 4.8); }
+      paint(ORV.listening ? 2 : f, E); }
+    requestAnimationFrame(loop); };
+  requestAnimationFrame(loop);
+})();
+
+/* ═══ BOOT: #say= from the Tell Orv Shortcut arrives as if typed ═══ */
+render();
+function fromHash() { const m = /^#say=(.*)$/s.exec(location.hash); if (!m) return; let w = ''; try { w = decodeURIComponent(m[1].replace(/\+/g, ' ')); } catch (e) { w = ''; }
+  history.replaceState(null, '', location.pathname + location.search); if (w.trim()) speak(w); }
+fromHash(); window.addEventListener('hashchange', fromHash);
+drawChat();
+if (!box().apiKey) say('(Orv looks up at you.) Paste a key on the line below and tap me. Then tell me what the day holds.', true);
+else if (load('orv.summary', '')) say(load('orv.summary', ''));
+</script>
+</body>
+</html>
