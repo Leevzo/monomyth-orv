@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src https:; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#17232e">
 <title>From the Desk</title>
@@ -40,10 +40,65 @@ h2 { font-size: 13px; letter-spacing: .1em; color: var(--faint); font-weight: no
   color: var(--ink); font: inherit; font-size: 18px; padding: 14px 0; cursor: pointer; }
 .shelf small { color: var(--faint); font-size: 12px; margin-left: 8px; }
 .empty { color: var(--dim); font-size: 16px; line-height: 1.5; }
+/* THE SKY: what still needs doing. Bright stars wait; a tap checks one off and it settles small and dim. */
+#sky { width: 100%; height: 160px; display: block; margin: 4px 0 2px; touch-action: manipulation; }
+#sky text { font-family: 'W95FA', ui-monospace, monospace; font-size: 13px; fill: var(--ink); }
+#sky .done text { fill: var(--faint); text-decoration: line-through; }
+.addline { display: flex; gap: 10px; align-items: flex-end; margin: 6px 0 0; }
+.addline textarea { flex: 1; font: inherit; font-size: 16px; color: var(--ink); background: transparent; border: 0; border-bottom: 1px solid var(--line);
+  padding: 6px 2px; outline: none; resize: none; overflow: hidden; border-radius: 0; }
+.addline textarea::placeholder { color: var(--faint); }
+.word { background: none; border: 0; font: inherit; font-size: 17px; color: var(--gold); padding: 6px 0; cursor: pointer; }
+.note { font-size: 13px; color: var(--dim); min-height: 1.2em; margin: 6px 0; white-space: pre-wrap; }
+.note.bad { color: #FF3D12; }
+/* FROM YOUR WORDS: only the headings and action your messages name — never dialogue */
+.pages { background: var(--page); padding: 18px 16px; margin-top: 8px; font-family: 'Courier Prime', 'Courier New', monospace; }
+.pages .h { font-weight: bold; text-transform: uppercase; margin: 18px 0 8px; font-size: 15px; }
+.pages .h:first-child { margin-top: 0; }
+.pages .a { margin: 0 0 8px; font-size: 15px; line-height: 1.4; }
+.pages .src { font-family: 'W95FA', ui-monospace, monospace; font-size: 11px; color: var(--faint); margin: -2px 0 10px; }
+/* THE SALMON and his Settings: the same as Orv's, the same key */
+#salmon { position: fixed; z-index: 20; top: calc(env(safe-area-inset-top) + 10px); right: 12px; image-rendering: pixelated; cursor: pointer; padding: 6px; }
+#salmon.call { animation: swim 1.1s steps(2) infinite; } @keyframes swim { 50% { transform: translateX(-4px); } }
+#set { position: fixed; inset: 0; z-index: 15; background: var(--ground); overflow-y: auto; display: flex; flex-direction: column;
+  padding: calc(env(safe-area-inset-top) + 58px) 22px calc(env(safe-area-inset-bottom) + 18px); }
+#set[hidden], .sl[hidden] { display: none; }
+#set h1 { font-size: clamp(26px, 8vw, 40px); }
+#setBody { flex: 1 0 auto; display: flex; flex-direction: column; justify-content: space-evenly; gap: 22px; padding: 26px 0 18px; }
+.sl { display: flex; flex-direction: column; gap: 4px; }
+.sl > span { font-size: 15px; letter-spacing: .06em; color: var(--dim); }
+.sl textarea, .sl input { width: 100%; font: inherit; font-size: clamp(19px, 5.6vw, 26px); line-height: 1.3; color: var(--ink); background: transparent; border: 0;
+  border-bottom: 1px solid var(--faint); border-radius: 0; padding: 8px 2px 10px; outline: none; resize: none; overflow: hidden; word-break: break-all; -webkit-appearance: none; }
+.sl textarea::placeholder, .sl input::placeholder { color: var(--faint); }
+#setTest { align-self: flex-start; font-size: clamp(22px, 6.4vw, 30px); }
+#setSay { min-height: 4.2em; font-size: clamp(16px, 4.6vw, 21px); line-height: 1.4; color: var(--dim); white-space: pre-wrap; }
+#setSay.bad { color: #FF3D12; } #setSay.good { color: var(--gold); }
 </style>
 </head>
 <body>
 <main id="main"></main>
+<canvas id="salmon" role="button" tabindex="0" aria-label="settings (the salmon of knowledge)"></canvas>
+<div id="set" hidden role="dialog" aria-label="settings">
+  <h1>settings</h1>
+  <div id="setBody">
+  <label class="sl"><span>key</span><textarea id="setKey" rows="1" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="paste your key"></textarea></label>
+  <label class="sl" id="setChaRow" hidden><span>coin</span><input id="setCha" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Cha-ching"></label>
+  <label class="sl"><span>model</span><input id="setModel" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="chosen for you"></label>
+  <button id="setTest" class="word" type="button">test</button>
+  <div id="setSay" aria-live="polite"></div>
+  </div>
+</div>
+<script>
+/* the key, shared with Orv: same box, same doors, same Cha-ching (door.js is lifted from his index.html) */
+const K = { timeoutMs: 120000, freeDoors: ['groq', 'gemini', 'openrouter'], password: 'Cha-ching',
+  seed: 'You are Orv, the teasing one-eyed homunculus and Hand. Read before speaking. Surface shapes, don\'t invent. Guide the King to write. Tease him.' };
+const BOX = 'monomyth.focus.byok.v1';
+const load = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } };
+const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } };
+const box = () => load(BOX, {}) || {};
+const nowIso = () => new Date().toISOString();
+</script>
+<script src="./door.js"></script>
 <script>
 'use strict';
 const $ = id => document.getElementById(id);
@@ -63,13 +118,14 @@ function clean(o) {
   if (!o || o.v !== 1 || !okId(o.p)) return null;
   const plot = o.plot || {};
   return { v: 1, p: o.p, name: str(o.name || o.p, 200), at: isNaN(new Date(o.at)) ? new Date().toISOString() : new Date(o.at).toISOString(),
-    plot: { logline: str(plot.logline, 1000), summary: str(plot.summary, 6000), beats: (Array.isArray(plot.beats) ? plot.beats : []).slice(0, 300).map(b => str(b, 1000)) },
+    plot: { logline: str(plot.logline, 1000), summary: str(plot.summary, 6000), beats: (Array.isArray(plot.beats) ? plot.beats : []).slice(0, 300).map(b => str(b, 1000)),
+      todo: (Array.isArray(plot.todo) ? plot.todo : []).slice(0, 200).map(b => str(b, 200)) },
     talk: (Array.isArray(o.talk) ? o.talk : []).slice(-400).map(t => ({ who: str(t && t.who, 40), text: str(t && t.text, 8000) })) };
 }
-const load = p => { try { return JSON.parse(localStorage.getItem('desk.' + p) || 'null'); } catch (e) { return null; } };
-const keep = d => { const was = load(d.p); if (was && new Date(was.at) > new Date(d.at)) return was;
+const loadDesk = p => { try { return JSON.parse(localStorage.getItem('desk.' + p) || 'null'); } catch (e) { return null; } };
+const keep = d => { const was = loadDesk(d.p); if (was && new Date(was.at) > new Date(d.at)) return was;
   try { localStorage.setItem('desk.' + d.p, JSON.stringify(d)); } catch (e) {} return d; };
-const all = () => { const o = []; try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (/^desk\.[a-z0-9-]+$/.test(k)) { const d = load(k.slice(5)); if (d) o.push(d); } } } catch (e) {} return o.sort((a, b) => new Date(b.at) - new Date(a.at)); };
+const all = () => { const o = []; try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (/^desk\.[a-z0-9-]+$/.test(k)) { const d = loadDesk(k.slice(5)); if (d) o.push(d); } } } catch (e) {} return o.sort((a, b) => new Date(b.at) - new Date(a.at)); };
 const when = at => { const d = new Date(at); return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); };
 
 function show(d) {
@@ -94,6 +150,7 @@ function show(d) {
     d.talk.forEach(x => { const king = /^(k|king|me|leevzo)$/i.test(x.who); const p = mk('p', king ? 'k' : 'o'); p.append(mk('span', 'who', king ? 'THE KING' : (x.who || 'ORV').toUpperCase()), document.createTextNode(x.text)); t.append(p); });
     m.append(t);
   }
+  if (typeof deskWork === 'function') deskWork(d, m, plot);
   const others = all().filter(x => x.p !== d.p);
   if (others.length) { m.append(mk('h2', '', 'OTHER PROJECTS FROM THE DESK')); m.append(shelf(others)); }
 }
@@ -115,6 +172,9 @@ async function boot() {
   if (!list.length) return main.append(mk('p', 'empty', 'Nothing from the desk yet. In Scriptorium, tap send on a project and scan its code.'));
   main.append(shelf(list));
 }
+</script>
+<script src="./desk-work.js"></script>
+<script>
 boot();
 addEventListener('hashchange', () => { $('main').textContent = ''; boot(); });
 </script>
