@@ -45,13 +45,13 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--in
 #clock { font-family: 'Dogica', ui-monospace, monospace; font-size: 12px; letter-spacing: .08em; margin-top: 6px; min-height: 16px; }
 /* the middle: the list | the divider (his name) | Orv's side */
 #main { flex: 1 1 auto; min-height: 0; display: flex; margin-top: 14px; }
-#left { width: var(--d, 58%); min-width: 0; display: flex; flex-direction: column; }
+#left { flex: 0 0 var(--d, 58%); width: var(--d, 58%); min-width: 0; display: flex; flex-direction: column; }
 /* the list: numbers on the very left edge, times beside them, the words floating free */
 #list { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; padding-bottom: 8px; touch-action: pan-y; }
 #div { flex: 0 0 26px; display: flex; flex-direction: column; align-items: center; justify-content: center; touch-action: none; cursor: col-resize;
   font-family: 'Dogica', ui-monospace, monospace; font-size: 11px; line-height: 15px; user-select: none; -webkit-user-select: none; }
 #div span { display: block; }
-#right { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; padding-bottom: calc(var(--orvh) + 4px); }
+#right { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; padding-bottom: calc(var(--orvh) - 36px); }
 #talk { flex: 1 1 auto; overflow-y: auto; display: none; padding: 0 2px 8px 6px; }
 #app.open #talk { display: block; }
 #app.action #right > :not(#mode) { display: none; }
