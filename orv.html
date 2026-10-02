@@ -106,6 +106,10 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--in
 #hear[hidden] { display: none; }
 #hear i { color: var(--dim); font-style: normal; }
 #hear .dot { color: var(--late); }
+#orv { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: none; }
+body.holding, body.holding * { -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none !important; }
+#app, #say, #hear, #meter { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+#line, #set textarea, #set input { -webkit-user-select: text; user-select: text; }
 /* THE SALMON OF KNOWLEDGE: the settings live behind him, top right */
 #salmon { position: fixed; z-index: 20; top: calc(env(safe-area-inset-top) + 10px); right: calc(var(--pad) - 4px); image-rendering: pixelated; cursor: pointer; padding: 6px; }
 #salmon.call { animation: swim 1.1s steps(2) infinite; }
@@ -528,36 +532,51 @@ function meterToggle() { const m = $('meter'); m.hidden = !m.hidden; if (!m.hidd
 
 /* HOLD: Safari's own speech recognition (no Jev, no key); the words show live; letting go sends them to Orv */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let REC = null, HEARD = '', HEAR_LIVE = '';
+/* ONE ear for the whole sitting: it is started once (one permission ask) and kept awake while the app is open,
+   so a hold does not ask again. Only words heard WHILE HELD are taken. It rests after 3 quiet minutes. */
+const EAR = { rec: null, on: false, held: false, base: 0, n: 0, fin: '', live: '', rest: 0, last: [] };
 function hearShow() { const h = $('hear'); h.hidden = false; h.textContent = '';
   const dot = document.createElement('span'); dot.className = 'dot'; dot.textContent = '● '; h.appendChild(dot);
-  h.appendChild(document.createTextNode(HEARD)); const i = document.createElement('i'); i.textContent = HEAR_LIVE; h.appendChild(i); }
-function listenStart() {
+  h.appendChild(document.createTextNode(EAR.fin)); const i = document.createElement('i'); i.textContent = (EAR.fin ? ' ' : '') + EAR.live; h.appendChild(i); }
+function earWake() {
+  if (EAR.on) return true;
   if (!SR) { say('(Orv cups an ear.) This phone will not let a page listen. Tap the line and use the keyboard\'s mic.', true); return false; }
-  HEARD = ''; HEAR_LIVE = ''; ORV.listening = true;
-  try { REC = new SR(); } catch (e) { return false; }
-  REC.continuous = true; REC.interimResults = true; REC.lang = navigator.language || 'en-US';
-  REC.onresult = ev => { let fin = '', live = ''; for (let i = 0; i < ev.results.length; i++) { const r = ev.results[i]; if (r.isFinal) fin += r[0].transcript; else live += r[0].transcript; }
-    HEARD = fin; HEAR_LIVE = live; hearShow(); };
-  REC.onerror = ev => { if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') say('(Orv cannot hear you: the phone said no to the microphone. Settings → Apps → Safari → Microphone.)', true); };
-  REC.onend = () => { if (REC && REC._held) try { REC.start(); } catch (e) {} };   // Safari stops on pauses; keep listening while held
-  REC._held = true; hearShow();
-  try { REC.start(); } catch (e) { return false; }
-  return true;
+  if (!EAR.rec) {
+    const r = new SR(); r.continuous = true; r.interimResults = true; r.lang = navigator.language || 'en-US';
+    r.onresult = ev => { EAR.n = ev.results.length; EAR.last = ev.results; if (!EAR.held) return;
+      let fin = '', live = ''; for (let i = EAR.base; i < ev.results.length; i++) { const x = ev.results[i]; if (x.isFinal) fin += x[0].transcript; else live += x[0].transcript; }
+      EAR.fin = fin.trim(); EAR.live = live.trim(); hearShow(); };
+    r.onerror = ev => { if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') { EAR.on = false; EAR.denied = true;
+      say('(Orv cannot hear you: the microphone was refused. In Safari: aA → Website Settings → Microphone → Allow.)', true); } };
+    r.onend = () => { EAR.n = 0; EAR.base = 0; if (EAR.on && !EAR.denied && !document.hidden) { try { r.start(); } catch (e) { EAR.on = false; } } else EAR.on = false; };
+    EAR.rec = r;
+  }
+  try { EAR.rec.start(); EAR.on = true; } catch (e) { EAR.on = /already/i.test(String(e && e.message)); }
+  return EAR.on;
+}
+function earRest() { EAR.on = false; try { EAR.rec && EAR.rec.stop(); } catch (e) {} }
+document.addEventListener('visibilitychange', () => { if (document.hidden) earRest(); });
+function listenStart() {
+  if (!earWake()) return false;
+  clearTimeout(EAR.rest); EAR.held = true; EAR.base = EAR.n; EAR.fin = ''; EAR.live = ''; ORV.listening = true;
+  document.body.classList.add('holding'); hearShow(); return true;
 }
 function listenStop() {
-  if (!REC) return; const r = REC; REC = null; r._held = false; ORV.listening = false;
-  setTimeout(() => { try { r.stop(); } catch (e) {}
-    setTimeout(() => { const words = (HEARD + ' ' + HEAR_LIVE).replace(/\s+/g, ' ').trim(); $('hear').hidden = true;
-      if (words) { log({ who: 'k', what: 'voice', text: words }); speak(words); } }, 600); }, 250);
+  if (!EAR.held) return;
+  setTimeout(() => {                                           // a breath for the last words to land
+    EAR.held = false; ORV.listening = false; document.body.classList.remove('holding');
+    const words = (EAR.fin + ' ' + EAR.live).replace(/\s+/g, ' ').trim(); $('hear').hidden = true;
+    EAR.base = EAR.n; EAR.rest = setTimeout(earRest, 180000);
+    if (words) { log({ who: 'k', what: 'voice', text: words }); speak(words); }
+  }, 700);
 }
 (function hands() {
   const O = $('orv'); let holdT = 0, held = false, lastTap = 0, tapT = 0, x0 = 0, y0 = 0;
   O.addEventListener('contextmenu', e => e.preventDefault());
-  O.style.webkitTouchCallout = 'none'; O.style.userSelect = 'none'; O.style.touchAction = 'none';
-  O.addEventListener('pointerdown', e => { held = false; x0 = e.clientX; y0 = e.clientY;
-    holdT = setTimeout(() => { held = true; clearTimeout(tapT); lastTap = 0; listenStart(); }, 420); });
-  O.addEventListener('pointermove', e => { if (!held && Math.hypot(e.clientX - x0, e.clientY - y0) > 12) clearTimeout(holdT); });
+  O.addEventListener('touchstart', e => e.preventDefault(), { passive: false });   // no magnifier, no selection, no callout
+  O.addEventListener('pointerdown', e => { held = false; x0 = e.clientX; y0 = e.clientY; try { O.setPointerCapture(e.pointerId); } catch (x) {}
+    holdT = setTimeout(() => { held = true; clearTimeout(tapT); lastTap = 0; listenStart(); }, 380); });
+  O.addEventListener('pointermove', e => { if (!held && Math.hypot(e.clientX - x0, e.clientY - y0) > 14) clearTimeout(holdT); });
   const up = () => { clearTimeout(holdT);
     if (held) { held = false; listenStop(); return; }
     const now = Date.now();
@@ -584,7 +603,7 @@ function listenStop() {
 /* ═══ ORV, SUMMONED: his own idle rig (Summon.tsx via OrvSummon2), the one Orv, never redrawn ═══ */
 const ORV = { listening: false };
 (async function orvBoot() {
-  const cv = $('orv'); let O; try { O = await (await fetch('./orv/orv-atari.json')).json(); } catch (e) { return; }
+  const cv = $('orv'); let O; try { O = await (await fetch('./orv/orv2.json')).json(); } catch (e) { return; }
   const w = O.w, h = O.h, S = K.orvScale, mx = 5, my = 4;
   const lowest = rows => { for (let y = rows.length - 1; y >= 0; y--) if (/[^.]/.test(rows[y])) return y; return rows.length - 1; };
   const floor = Math.max.apply(null, O.frames.map(lowest));
