@@ -61,23 +61,30 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--in
   font-family: 'Dogica', ui-monospace, monospace; font-size: 17px; letter-spacing: .3em; color: var(--ink); opacity: .16; white-space: nowrap; transition: opacity .25s; }
 #star.lit { opacity: 1; }
 #app.open #star { opacity: .32; }
+#app.open #div { z-index: 6; }
 #app.action #star { opacity: .5; color: var(--gold); }
 #right { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; padding-bottom: calc(var(--orvh) - 36px); }
 #talk { flex: 1 1 auto; overflow-y: auto; display: none; padding: 0 2px 8px 6px; }
-#app.open #talk { display: block; }
+#app.open #talk { display: block; position: fixed; z-index: 5; left: 8px; width: 75vw; top: calc(env(safe-area-inset-top) + 120px);
+  bottom: calc(env(safe-area-inset-bottom) + 64px); background: var(--ground); padding: 0 10px 8px 6px; }
 #app.action #right { display: none; }
 #mode { display: none; }
-.row { display: grid; grid-template-columns: 22px 46px 1fr; align-items: baseline; min-height: 40px; padding: 4px 0;
-  user-select: none; -webkit-user-select: none; touch-action: pan-y; }
-.num { font-family: 'Dogica', ui-monospace, monospace; font-size: 11px; color: var(--faint); text-align: left; }
-.at { font-size: var(--small); color: var(--dim); }
+.row { position: relative; min-height: 42px; padding: 6px 0 6px 6px; user-select: none; -webkit-user-select: none; touch-action: pan-y; }
+.at { display: block; font-size: 11px; color: var(--dim); margin-bottom: 1px; }
+.at:empty { display: none; }
 .at.late { color: var(--late); }
-.word { font-size: var(--word); transition: none; }
-.row.sel .word { transform: translateX(28px); }
+.word { display: inline-block; font-family: 'Dogica', ui-monospace, monospace; font-size: 17px; font-weight: bold; line-height: 1.35; transition: none; }
+.line { display: none; font-size: 15px; line-height: 1.45; color: var(--dim); margin: 6px 0 4px; white-space: pre-wrap; }
 .row.sel .line { display: block; }
-.line { display: none; grid-column: 3; font-size: var(--small); color: var(--dim); transform: translateX(28px); margin-top: 2px; }
-.row.done .word { color: var(--faint); text-decoration: line-through; }
+.row.done .word { color: var(--faint) !important; text-decoration: line-through; }
 .row.is-one .word { color: var(--gold); }
+/* the swipe says what it will do: a check to the right, an x to the left */
+.mark { position: absolute; top: 4px; font-family: 'Dogica', ui-monospace, monospace; font-size: 26px; font-weight: bold; opacity: 0; pointer-events: none; }
+.mark.yes { left: 2px; color: #22FF12; } .mark.no { right: 6px; color: var(--late); }
+/* THE ONE THING opens too: tap it for the whole of it */
+#one { cursor: pointer; }
+#oneLine { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+#one.open #oneLine { display: block; -webkit-line-clamp: unset; font-size: 15px; line-height: 1.45; white-space: pre-wrap; }
 #bottom { padding-right: calc(var(--orv) + 4px); }
 #say { font-size: 16px; line-height: 1.35; max-height: 40vh; overflow-y: auto; padding: 0 2px 6px 6px; white-space: pre-wrap; }
 #say.stage { color: var(--dim); font-style: italic; }
@@ -243,13 +250,14 @@ function render() {
   rows.forEach((t, i) => {
     const r = document.createElement('div'); r.className = 'row' + (t.done ? ' done' : '') + (one && t.id === one.id ? ' is-one' : '') + (t.id === SEL ? ' sel' : '');
     r.dataset.id = t.id;
-    const n = document.createElement('span'); n.className = 'num'; n.textContent = t.done ? '' : String(i + 1);
     const a = document.createElement('span'); a.className = 'at'; a.textContent = t.at ? fmtAt(t.at) : '';
     if (t.at && !t.done && new Date(t.at) < new Date()) a.classList.add('late');
     const w = document.createElement('span'); w.className = 'word';
-    if (t.id === SEL) rainbow(w, t.word); else w.textContent = t.word;
-    const l = document.createElement('span'); l.className = 'line'; l.textContent = t.text || '';
-    r.append(n, a, w, l); L.appendChild(r);
+    if (t.id === SEL) rainbow(w, t.word); else { w.textContent = t.word; if (!(one && t.id === one.id)) w.style.color = K.wheel[(i * 5 + 2) % K.wheel.length]; }
+    const l = document.createElement('div'); l.className = 'line'; l.textContent = t.text || '';
+    const yes = document.createElement('span'); yes.className = 'mark yes'; yes.textContent = t.done ? '↺' : '✓';
+    const no = document.createElement('span'); no.className = 'mark no'; no.textContent = '✗';
+    r.append(yes, no, a, w, l); L.appendChild(r);
   });
   tick();
 }
@@ -271,6 +279,7 @@ function tick() {
   c.append(d, w);
 }
 setInterval(tick, 1000);
+$('one').addEventListener('click', () => $('one').classList.toggle('open'));
 
 /* ═══ TOUCH: tap = light it and float it right; swipe right = done; swipe left = set aside ═══ */
 (function touch() {
@@ -279,8 +288,9 @@ setInterval(tick, 1000);
   L.addEventListener('pointerdown', e => { row = e.target.closest('.row'); if (!row) return; x0 = e.clientX; y0 = e.clientY; dx = 0; lock = null; });
   L.addEventListener('pointermove', e => { if (!row) return; const mx = e.clientX - x0, my = e.clientY - y0;
     if (!lock && (Math.abs(mx) > 10 || Math.abs(my) > 10)) lock = Math.abs(mx) > Math.abs(my) ? 'x' : 'y';
-    if (lock === 'x') { dx = mx; row.querySelector('.word').style.transform = 'translateX(' + dx + 'px)'; } });
-  const end = () => { if (!row) return; const t = byId(row.dataset.id), w = row.querySelector('.word'); w.style.transform = '';
+    if (lock === 'x') { dx = mx; row.querySelector('.word').style.transform = 'translateX(' + dx + 'px)';
+      const f = Math.min(1, Math.abs(dx) / K.swipe); row.querySelector('.mark.yes').style.opacity = dx > 0 ? f : 0; row.querySelector('.mark.no').style.opacity = dx < 0 ? f : 0; } });
+  const end = () => { if (!row) return; const t = byId(row.dataset.id), w = row.querySelector('.word'); w.style.transform = ''; row.querySelectorAll('.mark').forEach(m => { m.style.opacity = 0; });
     if (lock === 'x' && t && Math.abs(dx) > K.swipe) {
       if (dx > 0) { t.done = !t.done; t.doneAt = t.done ? nowIso() : null; log({ who: 'k', what: t.done ? 'done' : 'undone', id: t.id }); }
       else { t.gone = true; log({ who: 'k', what: 'set aside', id: t.id, word: t.word }); }
@@ -416,7 +426,7 @@ function system() {
     '\n\nAnswer ONLY with one JSON object: {"say": "...", "ops": [...]}' +
     '\n"say": a conversational reply in your own voice, to the High King. Usually two or three sentences. When he brings a problem, give him the tactic: the first move and, if it helps, up to five short numbered steps. Run the numbers when they matter (how many, how long, what fits before what).' +
     '\n"ops": changes to the list, only when his words ask for them or plainly imply them. Allowed ops, nothing else:' +
-    '\n {"op":"add","word":"<one word>","text":"<one plain line>","at":"<ISO time with offset, optional>"}' +
+    '\n {"op":"add","word":"<one word>","text":"<a plain description: a sentence or two, what it is and why>","at":"<ISO time with offset, optional>"}' +
     '\n {"op":"done","id":"<id>"}  {"op":"undone","id":"<id>"}  {"op":"remove","id":"<id>"}' +
     '\n {"op":"edit","id":"<id>","word":"...","text":"...","at":"<ISO or null>"}' +
     '\n {"op":"order","ids":["<id>", "..."]}   (the whole open list, highest priority first)' +
@@ -437,11 +447,11 @@ function apply(ops) {
     if (!o || typeof o.op !== 'string') return drop('not an op');
     if (o.op === 'add') {
       const word = String(o.word || '').trim().split(/\s+/)[0]; if (!word) return drop('no word'); if (!okAt(o.at)) return drop('bad time');
-      ST.n += 1; ST.tasks.push({ id: 't' + ST.n.toString(36), word: word.slice(0, 24), text: String(o.text || '').slice(0, 200), at: o.at ? new Date(o.at).toISOString() : null, done: false, doneAt: null });
+      ST.n += 1; ST.tasks.push({ id: 't' + ST.n.toString(36), word: word.slice(0, 24), text: String(o.text || '').slice(0, 600), at: o.at ? new Date(o.at).toISOString() : null, done: false, doneAt: null });
     } else if (o.op === 'done' || o.op === 'undone') { if (!t) return drop('no such task'); t.done = o.op === 'done'; t.doneAt = t.done ? nowIso() : null; }
     else if (o.op === 'remove') { if (!t) return drop('no such task'); t.gone = true; }
     else if (o.op === 'edit') { if (!t) return drop('no such task'); if (!okAt(o.at)) return drop('bad time');
-      if (o.word) t.word = String(o.word).trim().split(/\s+/)[0].slice(0, 24); if (o.text != null) t.text = String(o.text).slice(0, 200);
+      if (o.word) t.word = String(o.word).trim().split(/\s+/)[0].slice(0, 24); if (o.text != null) t.text = String(o.text).slice(0, 600);
       if ('at' in o) t.at = o.at ? new Date(o.at).toISOString() : null; }
     else if (o.op === 'order') { if (!Array.isArray(o.ids)) return drop('no ids'); const seen = new Set(), first = [];
       o.ids.forEach(id => { const x = byId(String(id)); if (x && !seen.has(x.id)) { seen.add(x.id); first.push(x); } });
