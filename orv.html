@@ -584,7 +584,7 @@ function listenStop() {
 /* ═══ ORV, SUMMONED: his own idle rig (Summon.tsx via OrvSummon2), the one Orv, never redrawn ═══ */
 const ORV = { listening: false };
 (async function orvBoot() {
-  const cv = $('orv'); let O; try { O = await (await fetch('./orv/orv2.json')).json(); } catch (e) { return; }
+  const cv = $('orv'); let O; try { O = await (await fetch('./orv/orv-atari.json')).json(); } catch (e) { return; }
   const w = O.w, h = O.h, S = K.orvScale, mx = 5, my = 4;
   const lowest = rows => { for (let y = rows.length - 1; y >= 0; y--) if (/[^.]/.test(rows[y])) return y; return rows.length - 1; };
   const floor = Math.max.apply(null, O.frames.map(lowest));
